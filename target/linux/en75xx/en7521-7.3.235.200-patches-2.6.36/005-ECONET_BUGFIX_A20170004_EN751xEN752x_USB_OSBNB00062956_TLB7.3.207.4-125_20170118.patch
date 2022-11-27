@@ -1,0 +1,26 @@
+Index: linux-2.6.36/drivers/usb/core/mtk/devio.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/core/mtk/devio.c	2017-04-22 16:45:22.325716215 +0800
++++ linux-2.6.36/drivers/usb/core/mtk/devio.c	2017-04-24 16:57:33.788181190 +0800
+@@ -928,12 +928,21 @@
+ 	unsigned int ep;
+ 	int pipe;
+ 	int ret;
++	struct usb_hcd *hcd = NULL;
+ 
+ 	if (get_user(ep, (unsigned int __user *)arg))
+ 		return -EFAULT;
+ 	ret = findintfep(ps->dev, ep);
+ 	if (ret < 0)
+ 		return ret;
++
++	/* USB3 Host will ignore the usb_clear_halt requested by up-layer */
++	hcd = bus_to_hcd(ps->dev->bus);
++	if (hcd->driver->flags & HCD_USB3)
++	{
++		return 0;
++	}
++
+ 	ret = checkintf(ps, ret);
+ 	if (ret)
+ 		return ret;

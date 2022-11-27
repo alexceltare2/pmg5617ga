@@ -1,0 +1,13 @@
+Index: libzcfg_fe_tr98-1.0/zcfg_fe_tr98_handle.h
+===================================================================
+--- libzcfg_fe_tr98-1.0.orig/zcfg_fe_tr98_handle.h	2017-07-06 17:37:57.141191006 +0800
++++ libzcfg_fe_tr98-1.0/zcfg_fe_tr98_handle.h	2017-07-06 17:40:55.141195118 +0800
+@@ -435,7 +435,7 @@
+ //{TR98_QTR_HR,                   0,              NULL,                   NULL,                    NULL,                   NULL,             NULL,            NULL},
+ {TR98_WAN_ETH_INTF_CONF,        0,              para_WANEthIntfConf,    WANEthIfaceCfgObjGet,	 WANEthIfaceCfgObjSet,   NULL,             NULL,            NULL},
+ {TR98_WAN_ETH_INTF_CONF_STAT,   0,              para_WANEthIntfConfStat,WANEthIfaceCfgStObjGet,  NULL,                   NULL,             NULL,            NULL},
+-{TR98_WAN_DSL_DIAG,             0,              para_WANDslDiag,        WANDslDiagObjGet,        WANDslDiagObjSet,       NULL,             NULL,            NULL},
++{TR98_WAN_DSL_DIAG,             0,              para_WANDslDiag,        NULL,        WANDslDiagObjSet,       NULL,             NULL,            NULL},
+ {TR98_WAN_CONN_DEV,             ATTR_INDEX_CREA,para_WANConnDev,        WANConnDevObjGet,        NULL,                   WANConnDevObjAdd, WANConnDevObjDel,NULL},
+ {TR98_WAN_DSL_LINK_CONF,        0,              para_WANDslLinkConf,    WANDslLinkConfObjGet,    WANDslLinkConfObjSet,   NULL,             NULL,            NULL},
+ {TR98_WAN_ATM_F5_LO_DIAG,       0,              para_WanAtmF5LoDiag,    WANAtmF5LoConfObjGet,    WANAtmF5LoConfObjSet,   NULL,             NULL,            NULL},

@@ -1,0 +1,40 @@
+Index: linux-2.6.36/kernel/workqueue.c
+===================================================================
+--- linux-2.6.36.orig/kernel/workqueue.c	2017-05-16 13:15:14.639719860 +0800
++++ linux-2.6.36/kernel/workqueue.c	2017-05-16 13:15:30.574332379 +0800
+@@ -1035,7 +1035,7 @@
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(queue_work);
++EXPORT_SYMBOL(queue_work);
+ 
+ /**
+  * queue_work_on - queue work on specific cpu
+@@ -2324,7 +2324,7 @@
+ out_unlock:
+ 	mutex_unlock(&wq->flush_mutex);
+ }
+-EXPORT_SYMBOL_GPL(flush_workqueue);
++EXPORT_SYMBOL(flush_workqueue);
+ 
+ /**
+  * flush_work - block until a work_struct's callback has terminated
+@@ -2846,7 +2846,7 @@
+ 	}
+ 	return NULL;
+ }
+-EXPORT_SYMBOL_GPL(__alloc_workqueue_key);
++EXPORT_SYMBOL(__alloc_workqueue_key);
+ 
+ /**
+  * destroy_workqueue - safely terminate a workqueue
+@@ -2889,7 +2889,7 @@
+ 	free_cwqs(wq);
+ 	kfree(wq);
+ }
+-EXPORT_SYMBOL_GPL(destroy_workqueue);
++EXPORT_SYMBOL(destroy_workqueue);
+ 
+ /**
+  * workqueue_set_max_active - adjust max_active of a workqueue

@@ -1,0 +1,13 @@
+Index: linux-2.6.36/net/ipv4/netfilter/nf_nat_proto_common.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/netfilter/nf_nat_proto_common.c	2017-04-27 16:38:04.270181319 +0800
++++ linux-2.6.36/net/ipv4/netfilter/nf_nat_proto_common.c	2017-04-27 16:39:21.660857321 +0800
+@@ -85,7 +85,7 @@
+ 		off = *rover;
+ 
+ #if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120308. */
+-	mappingOffset = tuple->dst.u.all - range->mappingMin.all;
++	mappingOffset = ntohs(tuple->dst.u.all) - ntohs(range->mappingMin.all);
+ 	for (i = 0; ; ++off, mappingOffset++) {
+ #else
+ 	for (i = 0; ; ++off) {

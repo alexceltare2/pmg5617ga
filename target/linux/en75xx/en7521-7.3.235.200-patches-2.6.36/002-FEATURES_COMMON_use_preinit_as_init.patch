@@ -1,0 +1,16 @@
+Index: linux-2.6.36/init/main.c
+===================================================================
+--- linux-2.6.36.orig/init/main.c	2017-04-22 15:59:30.086284437 +0800
++++ linux-2.6.36/init/main.c	2017-04-22 16:00:27.815134436 +0800
+@@ -854,10 +854,7 @@
+ 		printk(KERN_WARNING "Failed to execute %s.  Attempting "
+ 					"defaults...\n", execute_command);
+ 	}
+-	run_init_process("/sbin/init");
+-	run_init_process("/etc/init");
+-	run_init_process("/bin/init");
+-	run_init_process("/bin/sh");
++	run_init_process("/lib/preinit/preinit");
+ 
+ 	panic("No init found.  Try passing init= option to kernel. "
+ 	      "See Linux Documentation/init.txt for guidance.");

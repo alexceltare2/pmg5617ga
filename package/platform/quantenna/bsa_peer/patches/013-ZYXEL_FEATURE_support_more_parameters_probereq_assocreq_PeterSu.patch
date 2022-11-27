@@ -1,0 +1,1498 @@
+Index: bsa-1.0.1/bsa_peer/bsa_conf.txt
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_conf.txt	2017-04-28 09:56:09.684378537 +0800
++++ bsa-1.0.1/bsa_peer/bsa_conf.txt	2017-04-28 09:57:02.868013407 +0800
+@@ -1,2 +1,3 @@
+ 2g_band_interface=wl0
+ bsa_debug_level=1
++bsa_debug_filter=0
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-28 09:57:02.756014176 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-28 09:57:02.868013407 +0800
+@@ -70,6 +70,7 @@
+ 
+ extern int bsa_debug_level;
+ #if 1 //Zyxel
++extern int bsa_debug_filter;
+ extern const struct bsa_driver_ops bsa_driver_brcm_ops;
+ #else
+ extern const struct bsa_driver_ops bsa_driver_qtn_ops;
+@@ -163,6 +164,12 @@
+ 				bsa_debug_level = debug_level;
+ 				bsa_printf(BSA_INFO, "BSA_PEER: set debug level=%d", bsa_debug_level);
+ 			}
++#if 1 //Zyxel
++			else if (strstr(BSA_PEER_DEBUG_FILTER, tempVal) != NULL) {
++				sscanf(store_val, "%d", &bsa_debug_filter);
++				bsa_printf(BSA_INFO, "BSA_PEER: set debug filter=%d", bsa_debug_filter);
++			}
++#endif
+ 		}
+ 	}
+ 
+@@ -190,7 +197,11 @@
+ 
+ int main(int argc, char *argv[])
+ {
++#if 1 //Zyxel
+ 	int daemonize = 0;
++#else
++	int daemonize = 1;
++#endif
+ 	char *pid_file = NULL;
+ 	int ret = 0;
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.h	2017-04-28 09:56:09.120382415 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.h	2017-04-28 09:57:02.868013407 +0800
+@@ -53,6 +53,9 @@
+ #define INTERFACE_2G	"2g_band_interface"
+ #define INTERFACE_5G	"5g_band_interface"
+ #define BSA_PEER_DEBUG_LEVEL	"bsa_debug_level"
++#if 1 //Zyxel
++#define BSA_PEER_DEBUG_FILTER	"bsa_debug_filter"
++#endif
+ #define BSA_PEER_MAX_INTF_COUNT	8
+ #if 1 //Zyxel
+ #define BSA_CONF_FILE_PATH	"/etc/bsa_conf.txt"
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-28 09:56:09.628378921 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-28 10:00:37.606539999 +0800
+@@ -54,13 +54,16 @@
+ #include "libzywlan.h"
+ #include "zylib.h"
+ #include "bcmwifi_channels.h"
++#include "bsa_peer_common.h"
+ #endif
+ #include "bsa_peer_event.h"
+ #if 0 //Zyxel
+ #include <netinet/ether.h>
+ #endif
+ 
+-
++#if 1 //Zyxel
++int bsa_debug_filter = 0xFF;
++#endif
+ int bsa_debug_level = BSA_INFO;
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+@@ -72,7 +75,6 @@
+ extern uint16_t vap_count;
+ 
+ #if 1 //Zyxel
+-static void zyBsaPeerParseNetLink(wl_event_msg_t *wlem);
+ static uint8_t boradcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+ #endif
+ 
+@@ -109,14 +111,18 @@
+ 	struct bsa_peer_entity *bsa_peer = (void *) cmd_ctx;
+ 	struct bsa_command *bsa_cmd_buffer = (void *) buffer;
+ 	struct bsa_cmd_intf_ds *bsa_cmd_intf_info = NULL;
++#if 1 //Zyxel
+ 	struct bsa_cmd_start_fat_monitor_ds *fat_monitor_cmd = NULL;
++#endif
+ 	const struct bsa_driver_ops *driver_cb;
+ 	int index = -1, i = 0;
+ 	uint32_t cmd_spec = BSA_INTF_INFO_GEN_CMD;
++#if 1 //Zyxel
+ 	uint32_t fat_period = 0;
+ 	
+ 	bsa_cmd_buffer->cmdid = htole16(bsa_cmd_buffer->cmdid);
+ 	bsa_cmd_buffer->payload_len = htole16(bsa_cmd_buffer->payload_len);
++#endif
+ 
+ 	if (bsa_cmd_buffer == NULL) {
+ 		bsa_printf(BSA_WARN, "BSA_PEER: received invalid buffer.. \n");
+@@ -295,6 +301,7 @@
+ 		driver_cb->send_btm_req(bsa_peer, index, bsa_cmd_buffer->payload);
+ 		break;
+ 
++#if 1 //zyxel
+ 	case BSA_CMD_START_FAT_MONITORING:
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: send start fat monitoring; ifname=%s", bsa_conf_info[index].ifname);
+ 		driver_cb = bsa_conf_info[index].bsa_peer_driver_cb;
+@@ -306,6 +313,7 @@
+ 		fat_period = htole32(fat_monitor_cmd->fat_period);
+ 		driver_cb->start_fat_monitor(bsa_peer, index, fat_period);		
+ 		break;
++#endif
+ 
+ 	default:
+ 		bsa_printf(BSA_WARN, "BSA_PEER: Unknown command ID %d", bsa_cmd_buffer->cmdid);
+@@ -379,7 +387,8 @@
+ 	struct wl_event_rx_frame_data *werxfd;
+ 	struct bsa_drv_connect_compl_event_info connect_event;
+ 	struct bsa_evt_sta_disconnect_event_data sta_disconnect_event;
+-	zy_sta_info_t sta_info;
++	soniq_info_t soniq_info;
++	uint32 rss;
+ 
+ 	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv, (socklen_t *)&sock_len);
+ 	drv_msg = (bcm_event_t *)pkt;
+@@ -394,7 +403,7 @@
+ 	wlem->auth_type = ntohl(wlem->auth_type);
+ 	wlem->datalen = ntohl(wlem->datalen);
+ 
+-	zyBsaPeerParseNetLink(wlem);
++	bsa_brcm_parse_netlink_event(wlem);
+ 
+ 	zyWifiGetIfHwAddr(wlem->ifname, bssid);
+ 
+@@ -406,11 +415,11 @@
+ 			werxfd = (struct wl_event_rx_frame_data *)((bcm_event_t *)pkt + 1);
+ 			probe_event.rssi = werxfd->rssi;
+ 			probe_event.channel = werxfd->channel;
+-#if 0 //soniq
+-			probe_event.max_phy_rate = werxfd->rate;
+-			probe_event.rss = ??;
+-			probe_event.band_width = ??;
+-			probe_event.bss_transition = ??;
++#if 0 //tmp
++			probe_event.max_phy_rate = zyGetHTMaxPhyRate(werxfd->bandwidth40, werxfd->sgi, werxfd->supportedMCSSet, &rss);
++			probe_event.rss = (uint16)rss;
++			probe_event.band_width = werxfd->bandwidth40;
++			probe_event.bss_transition = werxfd->bssTransition;
+ #else
+ 			probe_event.max_phy_rate = werxfd->rate;
+ 			probe_event.rss = 1;
+@@ -428,6 +437,14 @@
+ 				//probe_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
+ 			}
+ 
++			if ((BSA_DEBUG >= bsa_debug_level) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type))) {
++				printf("%s:%d BSA_EVENT_PROBE_REQ, ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
++								__FUNCTION__, __LINE__, wlem->ifname, connect_event.curr_band, connect_event.channel, MAC2STR(connect_event.sta_mac));
++				printf("		band_width=%d, bss_transition_support=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d\n",
++								connect_event.band_width, connect_event.bss_transition_support, connect_event.vht_capab, connect_event.mu_mimo_capab,
++								connect_event.max_phy_rate, connect_event.rss);
++			}
++
+ 			if (memcmp(boradcast_addr, bssid, ETH_ALEN)==0) {
+ 				int index;
+ 				for (index=0;index<vap_count;index++) {
+@@ -443,31 +460,35 @@
+ 			break;
+ 		case WLC_E_ASSOC_IND:
+ 			memcpy(&connect_event.sta_mac, wlem->addr.octet, ETH_ALEN);
+-			zyget_sta_info(wlem->ifname, connect_event.sta_mac, &sta_info, 'b');
+-			connect_event.max_phy_rate = sta_info.max_phy_rate;
+ 			connect_event.curr_band = BSA_OPER_BAND_2G;
+-			zyWlanGetCurrentChannelInfo(wlem->ifname, &chanspec);
++			bsa_brcm_get_current_channel_info(wlem->ifname, &chanspec);
+ 			connect_event.channel = chanspec.channel;
++			zyParseInformationElement((uint8 *)((bcm_event_t *)pkt + 1), wlem->datalen, &soniq_info);
++			connect_event.band_width = soniq_info.bandwidth40;
++			connect_event.bss_transition_support = soniq_info.bssTransition;
+ 
+ 			if (connect_event.curr_band == BSA_OPER_BAND_2G) {
+ 				connect_event.vht_capab = 0;
+ 				connect_event.mu_mimo_capab = 0;
++				connect_event.max_phy_rate = zyGetHTMaxPhyRate(soniq_info.bandwidth40, soniq_info.sgi, soniq_info.supportedMCSSet, &rss);
++				connect_event.rss = (uint16)rss;
+ 			}
+ 			else {
+ 				/* VHT Cap IE exist */
+ 				//connect_event.vht_capab = (ModifiedMe_VHT_Cap_IE);
+ 				/* VHT Cap bit19 (MU beamformer) & bit20 (MU beamformee) */
+ 				//connect_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
++				//connect_event.max_phy_rate = zyGetHTMaxPhyRate(soniq_info.bandwidth40, soniq_info.sgi, &(soniq_info.supportedMCSSet), &(connect_event.rss));
++				//connect_event.rss = (uint16)rss;
++			}
++
++			if ((BSA_DEBUG >= bsa_debug_level) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type))) {
++				printf("%s:%d BSA_EVENT_CONNECT_COMPLETE, ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
++								__FUNCTION__, __LINE__, wlem->ifname, connect_event.curr_band, connect_event.channel, MAC2STR(connect_event.sta_mac));
++				printf("		band_width=%d, bss_transition_support=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d\n",
++								connect_event.band_width, connect_event.bss_transition_support, connect_event.vht_capab, connect_event.mu_mimo_capab,
++								connect_event.max_phy_rate, connect_event.rss);
+ 			}
+-#if 0 //soniq
+-			connect_event.rss = ?;
+-			connect_event.band_width = ?;
+-			connect_event.bss_transition_support = ?;
+-#else
+-			connect_event.rss = 1;
+-			connect_event.band_width = 1;
+-			connect_event.bss_transition_support = 0;
+-#endif
+ 			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, bssid,
+ 											(uint8_t *)&connect_event, sizeof(struct bsa_drv_connect_compl_event_info));
+ 			break;
+@@ -530,7 +551,9 @@
+ 	free(netlink->cfg);
+ 	free(netlink);
+ 
++#if 1 //Zyxel
+ 	return;
++#endif
+ }
+ 
+ struct bsa_netlink_data * bsa_peer_netlink_create(struct bsa_netlink_config *cfg)
+@@ -647,7 +670,9 @@
+ 		if(FD_ISSET(net_data->read_sock, &rfds))
+ 			bsa_peer_process_app_cmd(net_data->read_sock, bsa_peer, NULL);
+ 	}
++#if 1 //Zyxel
+ 	return;
++#endif
+ }
+ 
+ int16_t tlv_vlen(uint16_t type)
+@@ -1344,512 +1369,6 @@
+ 	return;
+ }
+ 
+-static void zyBsaPeerParseNetLink(wl_event_msg_t *wlem)
+-{
+-	int i, j = 0;
+-	uint8 *d, *p;
+-	char ch;
+-	signed char buf[32];
+-
+-	if (BSA_DEBUG < bsa_debug_level) {
+-		return;
+-	}
+-
+-	p = wlem->addr.octet;
+-	d = (uint8 *)(wlem + 1);
+-
+-	printf("\n\n\n============ %s ============\n", __FUNCTION__);
+-	printf("wlem->version=%d, wlem->flags=0x%x, wlem->event_type=%d, wlem->status=%d, wlem->reason=%d, wlem->auth_type=%d, wlem->datalen=%d\n",
+-			wlem->version, wlem->flags, wlem->event_type, wlem->status, wlem->reason, wlem->auth_type, wlem->datalen);
+-	printf("wlem->addr=%02x:%02x:%02x:%02x:%02x:%02x, wlem->ifname=%s, wlem->ifidx=%d, wlem->bsscfgidx=%d \n",
+-			p[0], p[1], p[2], p[3], p[4], p[5], wlem->ifname, wlem->ifidx, wlem->bsscfgidx);
+-	for (i = 0 ; i < wlem->datalen ; i++) {
+-		printf("%02X", *(d+i));
+-		if (i % 8 == 7) {
+-			printf("  ");
+-		}
+-		buf[j++] = *(d+i);
+-		if (i % 16 == 15) {
+-			buf[j] = '\0';
+-			printf("		");
+-			for (j = 0 ; j < 16 ; j++) {
+-				ch = buf[j];
+-				printf("%c", (ch >= ' ' && ch <= '~')?(ch):('.'));
+-			}
+-			printf("\n");
+-			j = 0;
+-		}
+-	}
+-	printf("\n============ %s ============\n\n\n", __FUNCTION__);
+-	return;
+-}
+-
+-zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid){
+-	int fd;
+-	struct ifreq ifr;
+-	unsigned char *mac = NULL;
+-	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
+-
+-	memset(&ifr, 0, sizeof(ifr));
+-	fd = socket(AF_INET, SOCK_DGRAM, 0);
+-	ifr.ifr_addr.sa_family = AF_INET;
+-	strncpy(ifr.ifr_name , ifname , IFNAMSIZ-1);
+-
+-	if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr)) {
+-		mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
+-		ret = ZCFG_SUCCESS;
+-	}
+-	memcpy(bssid,mac,ETH_ALEN);
+-	close(fd);
+-	return ret;
+-}
+-
+-zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr){
+-	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
+-	if (ether_addr!=NULL) {
+-		sprintf(sta_mac, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ether_addr[0], ether_addr[1], ether_addr[2], ether_addr[3], ether_addr[4], ether_addr[5]);
+-		ret = ZCFG_SUCCESS;
+-	}
+-	return ret;
+-}
+-
+-int zycheckWlBand(const char *ifname){
+-	char buf[64] = {0}, *_ifname = NULL, *tmp;
+-	int l, band = -1;
+-	FILE *fp = NULL;
+-
+-	if(ifname == NULL) return -1;
+-
+-	_ifname = strdup(ifname);
+-	if(_ifname == NULL) return -1;
+-	if((tmp = strchr(_ifname, '.'))) *tmp = '\0';
+-
+-	sprintf(buf, "wlctl -i %s band", _ifname);
+-	if((fp = popen(buf, "r"))){
+-		l = fread (buf,1,sizeof(buf)-1,fp);
+-		if(l > 0){
+-			buf[l] = '\0';
+-			if(!strcmp(buf, "b")) band = BAND_B;
+-			else if(!strcmp(buf, "1")) band = BAND_A;
+-		}
+-
+-		pclose(fp);
+-	}
+-
+-	free(_ifname);
+-
+-	return band;
+-}
+-
+-int zygetMaxRateSet(char *rate_set){
+-	char *tmp, *tmp2, *strEnd;
+-	int rate = -1, i;
+-	float val = 0;
+-
+-	if(rate_set == NULL) return -1;
+-
+-	strEnd = rate_set+strlen(rate_set);
+-
+-	tmp = rate_set;
+-	while(tmp < strEnd){
+-		if(*tmp >= '0' && *tmp <= '9'){
+-			i = (int)strtof(tmp, &tmp2);
+-			if(i > rate) rate = i;
+-			tmp = tmp2;
+-		}
+-		tmp++;
+-	}
+-
+-	return rate;
+-}
+-
+-int zygetAntennaNum(char *mcs){
+-	int AntennaNum=0, index=0, i;
+-	char *tmp, *tmp2, *strEnd;
+-
+-	if (mcs == NULL) {
+-		return -1;
+-	}
+-	strEnd= mcs+strlen(mcs);
+-	tmp=mcs;
+-	while (tmp < strEnd) {
+-		if (*tmp>='0' && *tmp<='9') {
+-			i=(int)strtof(tmp,&tmp2);
+-			index=(i>index)?i:index;
+-		}
+-		tmp++;
+-	}
+-	switch(index) {
+-	case 7:
+-		AntennaNum=1;
+-		break;
+-	case 15:
+-		AntennaNum=2;
+-		break;
+-	case 23:
+-		AntennaNum=3;
+-		break;
+-	default:
+-		AntennaNum=0;
+-		break;
+-	}
+-	return AntennaNum;
+-}
+-
+-int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta, char type)
+-{
+-	FILE *fp = NULL;
+-	char buf[256], *tmp, *tmp2, *str, *tmp3;
+-	int len = sizeof(buf)-1;
+-	unsigned int flags = 0, ht_flags = 0, vht_flags = 0, firstLine = 1;
+-	char rate_set[256];
+-	char mcs_set[256];
+-	static char *filePath = "/tmp/.sta_results";
+-	char macAddr[18]={0};
+-	char bandwidth[10]={0};
+-
+-	if(ifname == NULL || mac == NULL || sta == NULL) {
+-		return -1;
+-	}
+-
+-	//memset(sta, 0, sizeof(brcm_wl_sta_st_s));
+-	memset(rate_set, 0, sizeof(rate_set));
+-	memset(mcs_set, 0, sizeof(mcs_set));
+-	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+-
+-	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
+-
+-	sprintf(buf, "wlctl -i %s sta_info %s > %s", ifname, macAddr, filePath);
+-	system(buf);
+-	if ((fp = fopen(filePath, "r"))) {
+-		while (fgets(buf, len, fp) != NULL) {
+-			if (firstLine) {
+-				if ((strncmp(buf, "wlctl:", 6) == 0)) {
+-					/* broadcom ==> wlctl: Bad Address */
+-					break;
+-				}
+-				firstLine = 0;
+-			}
+-			if ((tmp = strchr(buf, ':')) != NULL) {
+-				*tmp = '\0';
+-				tmp2 = tmp+1;
+-			}
+-			else {
+-				tmp2 = NULL;
+-			}
+-
+-			tmp = buf;
+-			if (tmp2) { // check has value
+-				if ((str = strstr(tmp,"rate of last tx pkt"))) {
+-					if ((tmp3 = strstr(tmp2,"kbps")))
+-						*tmp3 = '\0';
+-					if ((tmp3 = strchr(tmp2,'-')))
+-						*tmp3 = '\0';
+-					sta->lastTxRate = strtoul(tmp2, NULL, 0);
+-				}
+-				else if ((str = strstr(tmp,"rate of last rx pkt"))) {
+-					if ((tmp3 = strstr(tmp2,"kbps")))
+-						*tmp3 = '\0';
+-					if ((tmp3 = strchr(tmp2,'-')))
+-						*tmp3 = '\0';
+-					sta->lastRxRate = strtoul(tmp2, NULL, 0);
+-				}
+-				else if ((str = strstr(tmp,"flags"))){
+-					tmp3 = str+5;
+-					flags = strtoul(tmp3, NULL, 0);
+-				}
+-				else if ((str = strstr(tmp,"HT caps"))) {
+-					tmp3 = str+7;
+-					ht_flags = strtoul(tmp3, NULL, 0);
+-					if (str = strstr(tmp2,"SGI20")) {
+-						sprintf(bandwidth, "SGI20");
+-					}
+-					if (str = strstr(tmp2,"SGI40")) {
+-						sprintf(bandwidth, "SGI40");
+-					}
+-				}
+-				else if ((str = strstr(tmp,"VHT caps"))) {
+-					tmp3 = str+8;
+-					vht_flags = strtoul(tmp3, NULL, 0);
+-				}
+-				else if ((str = strstr(tmp,"rateset"))) {
+-					tmp3 = str+8;
+-					strncpy(rate_set, tmp3, sizeof(rate_set)-1);
+-				}
+-				else if ((str = strstr(tmp,"MCS SET"))) {
+-					tmp3 = str+10;
+-					strncpy(mcs_set, tmp3, sizeof(mcs_set)-1);
+-				}
+-				else if (type == 'd') {
+-					if ((str = strstr(tmp,"tx total pkts"))) {
+-						sta->txPackets = strtoul(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"tx total bytes"))) {
+-						sta->txBytes = strtoull(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"rx data pkts"))) {
+-						sta->rxPackets = strtoul(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"rx data bytes"))) {
+-						sta->rxBytes = strtoull(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"tx failures"))) {
+-						sta->txErrors = strtoul(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"tx pkts retries"))) {
+-						sta->txRetrans = strtoul(tmp2, NULL, 0);
+-					}
+-					else if ((str = strstr(tmp,"tx pkts retry exhausted"))) {
+-						sta->txRetransFail = strtoul(tmp2, NULL, 0);
+-					}
+-				}
+-			}
+-		}
+-		if (flags) {
+-			if (flags & WL_STA_AUTHE) {
+-				sta->authState = 1;
+-			}
+-			else {
+-				sta->authState = 0;
+-			}
+-			if (flags & WL_STA_ASSOC) {
+-				if (flags & WL_STA_VHT_CAP) {
+-					sta->standard = IEEE80211_WLPROTO_11AC;
+-					if (vht_flags & WL_STA_SGI160) { // if no SGI ??
+-						sta->bandwidth = 160;
+-					}
+-					else {
+-						sta->bandwidth = 80;
+-					}
+-				}
+-				else if (ht_flags != 0) {
+-					sta->standard = IEEE80211_WLPROTO_11N;
+-					//if(ht_flags & WL_STA_CAP_40MHZ)
+-					sta->bandwidth = (!strcmp(bandwidth,"SGI40")) ? 40 : 20;
+-				}
+-				else {
+-					sta->bandwidth = 20 ;
+-					// BAND_A is 5G
+-					if (zycheckWlBand(ifname) == BAND_A) {
+-						sta->standard = IEEE80211_WLPROTO_11A;
+-					}
+-					else {
+-						if (zygetMaxRateSet(rate_set) > 11) {
+-							sta->standard = IEEE80211_WLPROTO_11G;
+-						}
+-						else {
+-							sta->standard = IEEE80211_WLPROTO_11B;
+-						}
+-					}
+-				}
+-			}
+-		}
+-
+-		sta->rx_ss_info=zygetAntennaNum(mcs_set);
+-
+-		if (sta->bandwidth==20) {
+-			sta->max_phy_rate=Max_Phy_Rate20(sta->rx_ss_info);
+-		}
+-		else if (sta->bandwidth==40) {
+-			sta->max_phy_rate=Max_Phy_Rate40(sta->rx_ss_info);
+-		}
+-
+-		fclose(fp);
+-		unlink(filePath);
+-	}
+-
+-	//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta->standard, sta->authState, sta->rssi, sta->bandwidth, sta->rx_ss_info, sta->max_phy_rate);
+-	return 0;
+-}
+-#endif
+-
+-#if 0
+-int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id,	bcm_event_t *drv_msg)
+-{
+-    struct bsa_netlink_data *netlink = bsa_peer->netlink;
+-	//uint8_t *drv_event =  (void *)(msg_data);
+-	struct bsa_drv_probe_event_info *probe_event;
+-	struct bsa_drv_connect_compl_event_info *connect_event;
+-	struct bsa_drv_intf_status *intf_status_event;
+-	struct bsa_drv_intf_info *intf_info1 = NULL;
+-	struct bsa_drv_gen_intf_info *intf_info = NULL;
+-	struct bsa_drv_intf_fat_info *intf_fat_info = NULL;
+-	struct bsa_evt_sta_probereq_info *preq_info = NULL;
+-	struct bsa_evt_sta_connect_info *connect_info = NULL;
+-	struct bsa_evt_sta_disconnect_info *sta_disconnect_info = NULL;
+-	struct bsa_evt_intf_status *intf_status = NULL;
+-	struct ieee80211_bsa_sta_stats *bsa_dri_sta_stats = NULL;
+-	struct ieee80211_bsa_sta_info *bsa_dri_sta_info = NULL;
+-	struct ieee80211_nac_stats_report *bsa_dri_neighbour_report = NULL;
+-	struct ieee80211_bsa_btm_resp_event *drv_btm_resp_evt;
+-	struct nac_info_entry *bsa_dri_neighbour = NULL;
+-	struct bsa_evt_sta_disconnect_event_data *sta_disconnect_event;
+-	struct bsa_evt_bss_trans_status *bss_trans_status;
+-	struct bsa_reltime time;
+-	struct nlmsghdr *nlh = NULL;
+-	struct iovec iov;
+-	struct sockaddr_nl dest_addr;
+-	int msg_len;
+-	struct msghdr msg;
+-	uint8_t *tx_buff = NULL, *pos;
+-	struct bsa_event_info *event_buffer;
+-	struct ChSpec chanspec;
+-	struct zy_sta_info_t sta_info;
+-	uint32_t cnt = 0;
+-
+-	if (!netlink || (netlink->write_sock == 0)){
+-		return -EINVAL;
+-	}
+-	memset(&sta_info, 0, sizeof(sta_info));
+-	tx_buff = malloc(BSA_MAX_EVENT_LEN);
+-	if (!tx_buff) {
+-		return -ENOMEM;
+-	}
+-	event_buffer = (void *)tx_buff;
+-
+-	switch (event_id) {
+-		case BSA_EVENT_PROBE_REQ:
+-			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-
+-			//probe_event = (void *)(drv_event);
+-			msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+-			event_buffer->event_id = htole16(BSA_EVENT_PROBE_REQ);
+-			event_buffer->api_ver = BSA_PEER_API_VERSION;
+-			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
+-			event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
+-			preq_info = (void *)&event_buffer->payload;
+-			preq_info->curr_band = htole16(BSA_OPER_BAND_2G);
+-			memcpy(preq_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-#if 0 //Peter
+-			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n",
+-				MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac));
+-#endif
+-			zyget_sta_info(drv_msg->event.ifname, preq_info->sta_mac, &sta_info, 'b');
+-/*** Chihhao-Ask BRCM and modify the following. ***/
+-			//zyget_sta_rssi(drv_msg->event.ifname, preq_info->sta_mac, &sta_info);
+-			//preq_info->rssi = sta_info.rssi - BSA_RSSI_CORRECTION;
+-			zyWlanGetCurrentChannelInfo(drv_msg->event.ifname, &chanspec);
+-			preq_info->rx_ss_info = htole16(sta_info.rx_ss_info);
+-			preq_info->max_phy_rate = htole16(sta_info.max_phy_rate);
+-			bsa_get_reltime(&time);
+-			preq_info->tstamp = htole64(time.sec);
+-			preq_info->curr_band = htole16(BSA_OPER_BAND_2G);
+-			preq_info->channel = chanspec.channel;
+-			preq_info->sta_capab=0;
+-			if(sta_info.bandwidth==40)
+-				preq_info->sta_capab |= BIT(0);
+-			if(sta_info.standard==IEEE80211_WLPROTO_11AC)
+-				preq_info->sta_capab |= BIT(4);
+-			break;
+-		case BSA_EVENT_CONNECT_COMPLETE:
+-			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-
+-			//connect_event = (void *)(drv_event);
+-			msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+-			event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+-			event_buffer->api_ver = BSA_PEER_API_VERSION;
+-			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
+-			//memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-			event_buffer->payload_len = htole16(sizeof(struct bsa_evt_sta_connect_info));
+-			connect_info = (void *)&event_buffer->payload;
+-			memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-			connect_info->curr_band = htole16(BSA_OPER_BAND_2G);
+-			zyWlanGetCurrentChannelInfo(drv_msg->event.ifname, &chanspec);
+-			connect_info->channel = chanspec.channel;
+-
+-			zyget_sta_info(drv_msg->event.ifname, connect_info->sta_mac, &sta_info, 'b');
+-			zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
+-
+-			connect_info->rx_ss_info = htole16(sta_info.rx_ss_info);
+-			connect_info->max_phy_rate = htole16(sta_info.max_phy_rate);
+-/*** Chihhao-Ask BRCM station info. and modify the following. ***/
+-/*** unknown-->IEEE802.11v support,  MUMIMO support ***/
+-			//Bit0-3: supported bandwidth Bit3: IEEE802.11v support
+-			//Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
+-			connect_info->sta_capab=0;
+-			if(sta_info.bandwidth==40)
+-				connect_info->sta_capab |= BIT(0);
+-			if(sta_info.standard==IEEE80211_WLPROTO_11AC)
+-				connect_info->sta_capab |= BIT(4);
+-			connect_info->sta_capab |= BIT(6);
+-
+-#if 0 //Peter
+-			printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n",
+-				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
+-				connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
+-#endif
+-
+-			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
+-					MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
+-					connect_info->channel, connect_info->curr_band);*/
+-			break;
+-		case BSA_EVENT_DISASSOC:
+-			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-
+-			//sta_disconnect_event = (void *)(drv_event);
+-			msg_len = STA_DISCONNECT_INFO_LEN;
+-			event_buffer->event_id = htole16(BSA_EVENT_DISASSOC);
+-			event_buffer->api_ver = BSA_PEER_API_VERSION;
+-			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
+-			event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
+-			sta_disconnect_info = (void*)&event_buffer->payload;
+-			memcpy(sta_disconnect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-/*** Chihhao-Ask BRCM station info. and modify the following. ***/
+-/*** unknown-->direction ***/
+-			uint8_t direction=0;
+-			sta_disconnect_info->direction = direction;
+-			sta_disconnect_info->reason_code = htole16((uint16_t)drv_msg->event.reason);
+-#if 0 //Peter
+-			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n", MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac));
+-#endif
+-			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
+-					MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
+-					sta_disconnect_info->direction, sta_disconnect_info->reason_code);*/
+-			break;
+-		default:
+-			bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
+-			free(tx_buff);
+-			return -1;
+-	}
+-
+-	nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+-	memset(nlh, 0, NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+-	nlh->nlmsg_len = NLMSG_LENGTH(msg_len);
+-	nlh->nlmsg_pid = getpid();
+-	nlh->nlmsg_type = BSA_PEER_EVENT;
+-	nlh->nlmsg_flags = 0;
+-
+-	memcpy(NLMSG_DATA(nlh), tx_buff, msg_len);
+-
+-	memset(&dest_addr, 0, sizeof(dest_addr));
+-	dest_addr.nl_family = AF_NETLINK;
+-	dest_addr.nl_pid = 0;
+-	dest_addr.nl_groups = RTMGRP_NOTIFY;
+-
+-	iov.iov_base = (void *)nlh;
+-	iov.iov_len = nlh->nlmsg_len;
+-
+-	memset(&msg, 0, sizeof(msg));
+-	msg.msg_name = (void *)&dest_addr;
+-	msg.msg_namelen = sizeof(dest_addr);
+-	msg.msg_iov = &iov;
+-	msg.msg_iovlen = 1;
+-
+-	if (sendmsg(netlink->write_sock, &msg, 0) < 0) {
+-#if 0 //Peter
+-        printf("\033[0;32m [KAREN TEST    %s:%d Sendmsg faile] \033[0m \n", __FUNCTION__, __LINE__);
+ #endif
+-		bsa_printf(BSA_WARN, "BSA_PEER: sendmsg failed reason=%s\n", strerror(errno));
+-		free(tx_buff);
+-		free(nlh);
+-		return -1;
+-	}
+ 
+-	free(tx_buff);
+-	free(nlh);
+-
+-	return 0;
+-}
+-#endif
+ 
+Index: bsa-1.0.1/include/bsa_common_defs.h
+===================================================================
+--- bsa-1.0.1.orig/include/bsa_common_defs.h	2017-04-28 09:56:09.824377576 +0800
++++ bsa-1.0.1/include/bsa_common_defs.h	2017-04-28 09:57:02.872013380 +0800
+@@ -169,6 +169,13 @@
+ 	BSA_EVENT_STA_NONASSOC_STATS = 9,
+ };
+ 
++#if 1 //Zyxel
++#define BSA_BIT_PROBE_REQ			(1<<0)
++#define BSA_BIT_CONNECT_COMPLETE	(1<<1)
++#define BSA_BIT_DEAUTH				(1<<2)
++#define BSA_BIT_DESASSOC			(1<<3)
++#endif
++
+ enum tlv_type {
+ 	TLVTYPE_IFNAME = 500,
+ 	TLVTYPE_BSSID_MDID = 501,
+@@ -303,6 +310,9 @@
+ 	return (!memcmp(addr, zero_mac, ETH_ALEN));
+ }
+ 
++#if 1 //Zyxel
++extern int bsa_debug_filter;
++#endif
+ extern int bsa_debug_level;
+ void bsa_printf(int level, const char *fmt, ...);
+ void bsa_hexdump(const char *title, uint8_t *buf, size_t len);
+Index: bsa-1.0.1/bsa_peer/bsa_peer_common.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/bsa_peer_common.c	2017-04-28 09:57:02.872013380 +0800
+@@ -0,0 +1,303 @@
++#include <endian.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <proto/ethernet.h>
++#include <proto/bcmevent.h>
++#include "libzywlan.h"
++#include "zylib.h"
++#include "bsa_includes.h"
++#include "bsa_common_defs.h"
++#include "bsa_driver.h"
++#include "bsa_peer_entity.h"
++#include "bsa_peer_event.h"
++#include "bsa_peer_common.h"
++
++void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d)
++{
++	uint8 *t = body, *v;
++	int totlen = body_len, l;
++
++	while (totlen > 0) {
++		l = *(t + 1);
++		v = (t + 2);
++
++		switch(*t) {
++		case 45: /* HT Capabilities (45) */
++			{
++				uint8 *HTCapabilityInfo = v, *supportedMCSSet = v + 3;
++
++				d->bandwidth40 = ((HTCapabilityInfo[0]) & 0x02) ? (1) : (0);
++				d->sgi = ((HTCapabilityInfo[0] >> 5) & 0x3);
++				memcpy(d->supportedMCSSet, supportedMCSSet, 16);
++			}
++			break;
++		case 127: /* Extended Capabilities (127) */
++			{
++				uint8 *extendedCapabilities = v;
++
++				if (l >= 3) {	/* bit 19 */
++					d->bssTransition = (extendedCapabilities[2] & 0x08) ? (1) : (0);
++				}
++				else {
++					d->bssTransition = 0;
++				}
++			}
++			break;
++		default:
++			break;
++		}
++
++		/* Move to next tag. */
++		t += (l + 2);
++		totlen -= (l + 2);
++	}
++	return;
++}
++
++
++/* this function is from QTN SDK */
++int ieee80211_mcs2rate(int mcs, int mode, int sgi, int vht)
++{
++#define N(a)    (sizeof(a[0]) / sizeof(a[0][0][0]))
++	u_int32_t rates[2][2][77] = {{{
++
++			/* LGI & 20 MHz */
++			/* MCS0-MC31 (4 streams) are supported */
++			13, 26, 39, 52, 78, 104, 117, 130,
++			26, 52, 78, 104, 156, 208, 234, 260,
++			39, 78, 117, 156, 234, 312, 351, 390,
++			52, 104, 156, 208, 312, 416, 468, 520,
++
++			12, 78, 104, 130, 117, 156, 195, 104, /* UEQM */
++			130, 130, 156, 182, 182, 208, 156, 195,
++			195, 234, 273, 273, 312, 130, 156, 182,
++			156, 182, 208, 234, 208, 234, 260, 260,
++			286, 195, 234, 273, 234, 273, 312, 351,
++			312, 351, 390, 390, 429},
++		{
++
++			/* LGI & 40 MHz */
++			/* MCS0-MCS31 (4 streams) are supported */
++			27, 54, 81, 108, 162, 216, 243, 270,
++			54, 108, 162, 216, 324, 432, 486, 540,
++			81, 162, 243, 324, 486, 648, 729, 810,
++			108, 216, 324, 432, 648, 864, 972, 1080,
++
++			12, 162, 216, 270, 243, 324, 405, 216, /* UEQM */
++			270, 270, 324, 378, 378, 432, 324, 405,
++			405, 486, 567, 567, 648, 270, 324, 378,
++			324, 378, 432, 486, 432, 486, 540, 540,
++			594, 405, 486, 567, 486, 567, 648, 729,
++			648, 729, 810, 810, 891}},
++		{{
++
++			/* SGI & 20 MHz */
++			/* MCS0-MC31 (4 streams) are supported */
++			14, 28, 42, 56, 86, 114, 130, 144,
++			28, 56, 86, 114, 172, 230, 260, 288,
++			42, 86, 130, 172, 260, 346, 390, 432,
++			56, 114, 172, 230, 346, 462, 520, 576,
++
++			12, 86, 114, 144, 130, 172, 216, 86, /* UEQM */
++			114, 114, 172, 202, 202, 230, 172, 216,
++			216, 260, 302, 302, 346, 144, 172, 202,
++			172, 202, 230, 260, 230, 260, 288, 288,
++			316, 216, 260, 302, 260, 302, 346, 390,
++			346, 390, 432, 432, 476},
++		{
++			/* SGI * 40 MHz */
++			/* MCS0-MC31 (4 streams) are supported */
++			30, 60, 90, 120, 180, 240, 270, 300,
++			60, 120, 180, 240, 360, 480, 540, 600,
++			90, 180, 270, 360, 540, 720, 810, 900,
++			120, 240, 360, 480, 720, 960, 1080,1200,
++
++			12, 180, 240, 300, 270, 360, 450, 240, /* UEQM */
++			300, 300, 360, 420, 420, 480, 360, 450,
++			450, 540, 630, 630, 720, 300, 360, 420,
++			360, 420, 480, 540, 480, 540, 600, 600,
++			660, 450, 540, 630, 540, 630, 720, 810,
++			720, 810, 900, 900, 990}}
++		};
++
++	u_int32_t vht_rates[2][4][10] = {
++		{{
++			/* LGI & 80 MHz */
++			/* MCS0-MC9 */
++			59, 117, 176, 234, 351, 468, 527, 585, 702, 780
++		},
++		{
++			/* LGI & 160/80+80 MHz */
++			/* MCS0-MC9 */
++			117, 234, 351, 468, 702, 936, 1053, 1170, 1404, 1560
++		},
++		{
++			/* LGI & 20 MHz */
++			/* MCS0-MC9 */
++			13, 26, 39, 52, 78, 104, 117, 130, 156, 173
++		},
++		{
++			/* LGI & 40 MHz */
++			/* MCS0-MC9 */
++			27, 54, 81, 108, 162, 216, 243, 270, 324, 360
++		}},
++		{{
++			/* SGI & 80 MHz */
++			/* MCS0-MC9 */
++			65, 130, 195, 260, 390, 520, 585, 650, 780, 867
++		},
++		{
++			/* SGI & 160 MHz */
++			/* MCS0-MC9 */
++			130, 260, 390, 520, 780, 1040, 1170, 1300, 1560, 1733
++		},
++		{
++			/* SGI & 20 MHz */
++			/* MCS0-MC9 */
++			14, 29, 43, 58, 87, 116, 130, 144, 173, 192
++		},
++		{
++			/* SGI & 40 MHz */
++			/* MCS0-MC9 */
++			30, 60, 90, 120, 180, 240, 270, 300, 360, 400
++		}}};
++		if (vht) {
++			if(mcs >= 10)
++				return -1;
++			return (vht_rates[sgi][mode][mcs]);
++		} else {
++			if(mcs >= N(rates))
++				return -1;
++			return (rates[sgi][mode][mcs]);
++		}
++#undef N
++}
++
++/* this function is from QTN SDK */
++uint32 zyGetHTMaxPhyRate(uint8 bandwidth40, uint8 sgi2040, uint8 *supportedMCSSet, uint32 *rx_ss)
++{
++	int chan_mode = 0, j;
++	uint32 max = 0;
++	uint8 sgi = 0;
++	int k;
++	int r;
++	uint16 mask;
++
++	r = 0;
++	if (bandwidth40) {
++		chan_mode = 1;
++		sgi = (sgi2040 & 0x2) ? 1 : 0;
++	}
++	else {
++		sgi = (sgi2040 & 0x1) ? 1 : 0;
++	}
++	for (j = IEEE80211_HT_MCSSET_20_40_NSS1; j <= IEEE80211_HT_MCSSET_20_40_NSS4; j++) {
++		mask = 1;
++		for (k = 0; k < 8; k++, r++) {
++			if (supportedMCSSet[j] & mask) {
++				/* Copy HT rates */
++				int rate = ieee80211_mcs2rate(r, chan_mode, sgi, 0) / 2;
++				if (rate >= 0 && max < rate) {
++					max = rate;
++				}
++				*rx_ss = j+1;
++			}
++			mask = mask << 1;
++		}
++	}
++	return max;
++}
++
++zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid)
++{
++	int fd;
++	struct ifreq ifr;
++	unsigned char *mac = NULL;
++	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
++
++	memset(&ifr, 0, sizeof(ifr));
++	fd = socket(AF_INET, SOCK_DGRAM, 0);
++	ifr.ifr_addr.sa_family = AF_INET;
++	strncpy(ifr.ifr_name , ifname , IFNAMSIZ-1);
++
++	if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr)) {
++		mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
++		ret = ZCFG_SUCCESS;
++	}
++	memcpy(bssid,mac,ETH_ALEN);
++	close(fd);
++	return ret;
++}
++
++zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr)
++{
++	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
++	if (ether_addr!=NULL) {
++		sprintf(sta_mac, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ether_addr[0], ether_addr[1], ether_addr[2], ether_addr[3], ether_addr[4], ether_addr[5]);
++		ret = ZCFG_SUCCESS;
++	}
++	return ret;
++}
++
++int zygetMaxRateSet(char *rate_set)
++{
++	char *tmp, *tmp2, *strEnd;
++	int rate = -1, i;
++	float val = 0;
++
++	if(rate_set == NULL) return -1;
++
++	strEnd = rate_set+strlen(rate_set);
++
++	tmp = rate_set;
++	while(tmp < strEnd){
++		if(*tmp >= '0' && *tmp <= '9'){
++			i = (int)strtof(tmp, &tmp2);
++			if(i > rate) rate = i;
++			tmp = tmp2;
++		}
++		tmp++;
++	}
++
++	return rate;
++}
++
++int zygetAntennaNum(char *mcs)
++{
++	int AntennaNum=0, index=0, i;
++	char *tmp, *tmp2, *strEnd;
++
++	if (mcs == NULL) {
++		return -1;
++	}
++	strEnd= mcs+strlen(mcs);
++	tmp=mcs;
++	while (tmp < strEnd) {
++		if (*tmp>='0' && *tmp<='9') {
++			i=(int)strtof(tmp,&tmp2);
++			index=(i>index)?i:index;
++		}
++		tmp++;
++	}
++	switch(index) {
++	case 7:
++		AntennaNum=1;
++		break;
++	case 15:
++		AntennaNum=2;
++		break;
++	case 23:
++		AntennaNum=3;
++		break;
++	default:
++		AntennaNum=0;
++		break;
++	}
++	return AntennaNum;
++}
++
++
+Index: bsa-1.0.1/bsa_peer/bsa_peer_common.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/bsa_peer_common.h	2017-04-28 09:57:02.872013380 +0800
+@@ -0,0 +1,21 @@
++
++
++typedef struct soniq_info_s {
++	uint8 supportedMCSSet[16];
++	uint8 bandwidth40;
++	uint8 sgi;
++	uint8 bssTransition;
++	uint8 reserved[1];
++} soniq_info_t;
++
++
++void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d);
++int ieee80211_mcs2rate(int mcs, int mode, int sgi, int vht);
++uint32 zyGetHTMaxPhyRate(uint8 bandwidth40, uint8 sgi2040, uint8 *supportedMCSSet, uint32 *rx_ss);
++zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
++zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr);
++int zygetMaxRateSet(char *rate_set);
++int zygetAntennaNum(char *mcs);
++
++
++
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-04-28 09:57:02.752014203 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-04-28 09:57:02.872013380 +0800
+@@ -32,7 +32,7 @@
+ CFLAGS += -ljson -pthread
+ 
+ 
+-BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o ../../libzcfg_msg-1.0/zcfg_msg.o
++BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o bsa_peer_common.o ../common/bsa_debug.o ../../libzcfg_msg-1.0/zcfg_msg.o
+ FASTSTEERSTAOBJS = fast_steer_sta.o
+ 
+ LIBOBJS = $(BSAPEEROBJS)
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-04-28 09:56:09.732378209 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-04-28 09:57:02.872013380 +0800
+@@ -70,14 +70,6 @@
+ #if 1 //Zyxel
+ void bsa_drv_read_sock_init(int* drv_evt_sock);
+ void zybsa_peer_drv_events_handler(bcm_event_t * msg, int drv_event, struct bsa_peer_entity *bsa_peer);
+-zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
+-zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr);
+-zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec);
+-int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id, 	bcm_event_t *drv_msg);
+-int zygetMaxRateSet(char *rate_set);
+-int zycheckWlBand(const char *ifname);
+-int zygetAntennaNum(char *mcs);
+-int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta, char type);
+ #endif
+ 
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-28 09:57:02.752014203 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-28 09:57:02.872013380 +0800
+@@ -36,7 +36,7 @@
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ 
+ #define ID_CURSPEC_SEP '('
+-zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec)
++zcfgRet_t bsa_brcm_get_current_channel_info(const char *ifname, struct ChSpec *chspec)
+ {
+     char cmd[100] = {0};
+     FILE *fp = NULL;
+@@ -98,7 +98,7 @@
+     return ZCFG_INTERNAL_ERROR;
+ }
+ 
+-void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta)
++void bsa_brcm_get_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta)
+ {
+     static char *filePath2 = "/tmp/.sta_rssi";
+     char buf[256];
+@@ -626,6 +626,264 @@
+ 
+ #define MAX_SEND_ENTRIES 32
+ 
++uint32 bsa_brcm_event_type_2_bsa_debug_filter(uint32 eventType)
++{
++	if (eventType == WLC_E_PROBREQ_MSG_RX) {
++		return BSA_BIT_PROBE_REQ;
++	}
++	else if (eventType == WLC_E_ASSOC_IND) {
++		return BSA_BIT_CONNECT_COMPLETE;
++	}
++	else if (eventType == WLC_E_DEAUTH) {
++		return BSA_BIT_DEAUTH;
++	}
++	else if (eventType == WLC_E_DISASSOC_IND) {
++		return BSA_BIT_DESASSOC;
++	}
++	return 0;
++}
++
++void bsa_brcm_parse_netlink_event(wl_event_msg_t *wlem)
++{
++	int i, j = 0;
++	uint8 *d, *p;
++	char ch;
++	signed char buf[32];
++
++	if (BSA_DEBUG < bsa_debug_level) {
++		return;
++	}
++
++	p = wlem->addr.octet;
++	d = (uint8 *)(wlem + 1);
++
++	if (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type)) {
++		printf("\n\n\n============ %s ============\n", __FUNCTION__);
++		printf("wlem->version=%d, wlem->flags=0x%x, wlem->event_type=%d, wlem->status=%d, wlem->reason=%d, wlem->auth_type=%d, wlem->datalen=%d\n",
++				wlem->version, wlem->flags, wlem->event_type, wlem->status, wlem->reason, wlem->auth_type, wlem->datalen);
++		printf("wlem->addr=%02x:%02x:%02x:%02x:%02x:%02x, wlem->ifname=%s, wlem->ifidx=%d, wlem->bsscfgidx=%d \n",
++				p[0], p[1], p[2], p[3], p[4], p[5], wlem->ifname, wlem->ifidx, wlem->bsscfgidx);
++		for (i = 0 ; i < wlem->datalen ; i++) {
++			printf("%02X", *(d+i));
++			if (i % 8 == 7) {
++				printf("  ");
++			}
++			buf[j++] = *(d+i);
++			if (i % 16 == 15) {
++				buf[j] = '\0';
++				printf("        ");
++				for (j = 0 ; j < 16 ; j++) {
++					ch = buf[j];
++					printf("%c", (ch >= ' ' && ch <= '~')?(ch):('.'));
++				}
++				printf("\n");
++				j = 0;
++			}
++		}
++		printf("\n============ %s ============\n\n\n", __FUNCTION__);
++	}
++	return;
++}
++
++static int bsa_brcm_check_band(const char *ifname)
++{
++	char buf[64] = {0}, *_ifname = NULL, *tmp;
++	int l, band = -1;
++	FILE *fp = NULL;
++
++	if (ifname == NULL) {
++		return -1;
++	}
++
++	_ifname = strdup(ifname);
++	if (_ifname == NULL) {
++		return -1;
++	}
++	if ((tmp = strchr(_ifname, '.'))) {
++		*tmp = '\0';
++	}
++
++	sprintf(buf, "wlctl -i %s band", _ifname);
++	if ((fp = popen(buf, "r"))) {
++		l = fread (buf,1,sizeof(buf)-1,fp);
++		if (l > 0) {
++			buf[l] = '\0';
++			if (!strcmp(buf, "b")) {
++				band = BAND_B;
++			}
++			else if (!strcmp(buf, "1")) {
++				band = BAND_A;
++			}
++		}
++		pclose(fp);
++	}
++	free(_ifname);
++	return band;
++}
++
++static int bsa_brcm_get_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta, char type)
++{
++	FILE *fp = NULL;
++	char buf[256], *tmp, *tmp2, *str, *tmp3;
++	int len = sizeof(buf)-1;
++	unsigned int flags = 0, ht_flags = 0, vht_flags = 0, firstLine = 1;
++	char rate_set[256];
++	char mcs_set[256];
++	static char *filePath = "/tmp/.sta_results";
++	char macAddr[18]={0};
++	char bandwidth[10]={0};
++
++	if(ifname == NULL || mac == NULL || sta == NULL) {
++		return -1;
++	}
++
++	memset(rate_set, 0, sizeof(rate_set));
++	memset(mcs_set, 0, sizeof(mcs_set));
++	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++	bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++
++	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
++
++	sprintf(buf, "wlctl -i %s sta_info %s > %s", ifname, macAddr, filePath);
++	system(buf);
++	if ((fp = fopen(filePath, "r"))) {
++		while (fgets(buf, len, fp) != NULL) {
++			if (firstLine) {
++				if ((strncmp(buf, "wlctl:", 6) == 0)) {
++					/* broadcom ==> wlctl: Bad Address */
++					break;
++				}
++				firstLine = 0;
++			}
++			if ((tmp = strchr(buf, ':')) != NULL) {
++				*tmp = '\0';
++				tmp2 = tmp+1;
++			}
++			else {
++				tmp2 = NULL;
++			}
++
++			tmp = buf;
++			if (tmp2) { // check has value
++				if ((str = strstr(tmp,"rate of last tx pkt"))) {
++					if ((tmp3 = strstr(tmp2,"kbps")))
++						*tmp3 = '\0';
++					if ((tmp3 = strchr(tmp2,'-')))
++						*tmp3 = '\0';
++					sta->lastTxRate = strtoul(tmp2, NULL, 0);
++				}
++				else if ((str = strstr(tmp,"rate of last rx pkt"))) {
++					if ((tmp3 = strstr(tmp2,"kbps")))
++						*tmp3 = '\0';
++					if ((tmp3 = strchr(tmp2,'-')))
++						*tmp3 = '\0';
++					sta->lastRxRate = strtoul(tmp2, NULL, 0);
++				}
++				else if ((str = strstr(tmp,"flags"))){
++					tmp3 = str+5;
++					flags = strtoul(tmp3, NULL, 0);
++				}
++				else if ((str = strstr(tmp,"HT caps"))) {
++					tmp3 = str+7;
++					ht_flags = strtoul(tmp3, NULL, 0);
++					if (str = strstr(tmp2,"SGI20")) {
++						sprintf(bandwidth, "SGI20");
++					}
++					if (str = strstr(tmp2,"SGI40")) {
++						sprintf(bandwidth, "SGI40");
++					}
++				}
++				else if ((str = strstr(tmp,"VHT caps"))) {
++					tmp3 = str+8;
++					vht_flags = strtoul(tmp3, NULL, 0);
++				}
++				else if ((str = strstr(tmp,"rateset"))) {
++					tmp3 = str+8;
++					strncpy(rate_set, tmp3, sizeof(rate_set)-1);
++				}
++				else if ((str = strstr(tmp,"MCS SET"))) {
++					tmp3 = str+10;
++					strncpy(mcs_set, tmp3, sizeof(mcs_set)-1);
++				}
++				else if (type == 'd') {
++					if ((str = strstr(tmp,"tx total pkts"))) {
++						sta->txPackets = strtoul(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"tx total bytes"))) {
++						sta->txBytes = strtoull(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"rx data pkts"))) {
++						sta->rxPackets = strtoul(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"rx data bytes"))) {
++						sta->rxBytes = strtoull(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"tx failures"))) {
++						sta->txErrors = strtoul(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"tx pkts retries"))) {
++						sta->txRetrans = strtoul(tmp2, NULL, 0);
++					}
++					else if ((str = strstr(tmp,"tx pkts retry exhausted"))) {
++						sta->txRetransFail = strtoul(tmp2, NULL, 0);
++					}
++				}
++			}
++		}
++		if (flags) {
++			if (flags & WL_STA_AUTHE) {
++				sta->authState = 1;
++			}
++			else {
++				sta->authState = 0;
++			}
++			if (flags & WL_STA_ASSOC) {
++				if (flags & WL_STA_VHT_CAP) {
++					sta->standard = IEEE80211_WLPROTO_11AC;
++					if (vht_flags & WL_STA_SGI160) { // if no SGI ??
++						sta->bandwidth = 160;
++					}
++					else {
++						sta->bandwidth = 80;
++					}
++				}
++				else if (ht_flags != 0) {
++					sta->standard = IEEE80211_WLPROTO_11N;
++					sta->bandwidth = (!strcmp(bandwidth,"SGI40")) ? 40 : 20;
++				}
++				else {
++					sta->bandwidth = 20 ;
++					if (bsa_brcm_check_band(ifname) == BAND_A) {
++						sta->standard = IEEE80211_WLPROTO_11A;
++					}
++					else {
++						if (zygetMaxRateSet(rate_set) > 11) {
++							sta->standard = IEEE80211_WLPROTO_11G;
++						}
++						else {
++							sta->standard = IEEE80211_WLPROTO_11B;
++						}
++					}
++				}
++			}
++		}
++
++		sta->rx_ss_info=zygetAntennaNum(mcs_set);
++
++		if (sta->bandwidth==20) {
++			sta->max_phy_rate=Max_Phy_Rate20(sta->rx_ss_info);
++		}
++		else if (sta->bandwidth==40) {
++			sta->max_phy_rate=Max_Phy_Rate40(sta->rx_ss_info);
++		}
++
++		fclose(fp);
++		unlink(filePath);
++	}
++
++	return 0;
++}
++
+ int bsa_brcm_get_neighbour_stats(void *priv, int index, void *cmd_info)
+ {
+ 	struct bsa_peer_entity *bsa_peer = priv;
+@@ -710,9 +968,9 @@
+ 					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[4]),
+ 					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[5]));
+ 
+-			    zyget_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'b');
+-			    zyget_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'd');
+-			    zyget_sta_rssi(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info);
++			    bsa_brcm_get_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'b');
++			    bsa_brcm_get_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'd');
++			    bsa_brcm_get_sta_rssi(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info);
+ 
+ 			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_rx_pkt = sta_info.rxPackets;
+ 			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_tx_pkt = sta_info.txPackets;
+@@ -904,9 +1162,9 @@
+ 					&(connect_event->sta_mac[4]),
+ 					&(connect_event->sta_mac[5]));
+ 
+-			    zyget_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'b');
+-			    zyget_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'd');
+-			    zyget_sta_rssi(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info);
++			    bsa_brcm_get_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'b');
++			    bsa_brcm_get_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'd');
++			    bsa_brcm_get_sta_rssi(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info);
+ 
+ 			    connect_event->rssi = sta_info.rssi;
+ 			    connect_event->rss = sta_info.rx_ss_info;
+@@ -1060,7 +1318,8 @@
+ 	return retval;
+ }
+ 
+-int bsa_brcm_start_fat_monitor(void *priv, int index, uint32_t fat_period) {
++int bsa_brcm_start_fat_monitor(void *priv, int index, uint32_t fat_period)
++{
+ 	int retval = 0;
+ 	struct fat_monitor_thread_t *fat_monitor_params;
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-28 09:57:02.756014176 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-28 09:57:02.884013297 +0800
+@@ -258,10 +258,18 @@
+ 	uint16_t avg_fat;	
+ }__attribute__((packed));
+ 
+-zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec);
+-void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta);
++uint32 bsa_brcm_event_type_2_bsa_debug_filter(uint32 eventType);
++zcfgRet_t bsa_brcm_get_current_channel_info(const char *ifname, struct ChSpec *chspec);
++void bsa_brcm_get_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta);
++void bsa_brcm_parse_netlink_event(wl_event_msg_t *wlem);
++int bsa_brcm_get_neighbour_stats(void *priv, int index, void *cmd_info);
++int bsa_brcm_get_client_stats(void *priv, int index, void *cmd_info);
++int bsa_brcm_update_mac_filter_table(void *priv, int index, void *cmd_info);
++int bsa_brcm_send_btm_req(void *priv, int index, void *cmd_info);
++int bsa_brcm_get_associated_stations_info(void *priv, int index);
+ uint16_t get_brcm_fat(char *ifname);
+ void *fat_monitor_periodically(void *arg);
+ int monitor_thread_init(struct fat_monitor_thread_t *fat_monitor_params);
++int bsa_brcm_start_fat_monitor(void *priv, int index, uint32_t fat_period);
+ 
+ #endif

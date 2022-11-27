@@ -1,0 +1,15 @@
+Index: libzcfg_fe_tr98-1.0/qos.h
+===================================================================
+--- libzcfg_fe_tr98-1.0.orig/qos.h	2017-08-23 13:23:19.369339565 +0800
++++ libzcfg_fe_tr98-1.0/qos.h	2017-08-23 13:26:01.457336106 +0800
+@@ -23,8 +23,10 @@
+ 	{ "DefaultDSCPMark", PARAMETER_ATTR_WRITE, 0, json_type_int},
+ 	{ "DefaultEthernetPriorityMark", PARAMETER_ATTR_WRITE, 0, json_type_int},
+ 	{ "AvailableAppList", PARAMETER_ATTR_READONLY, 1024, json_type_string},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "X_ZYXEL_UpRate", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "X_ZYXEL_DownRate", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
++#endif
+ 	{ "X_ZYXEL_AutoMapType", PARAMETER_ATTR_WRITE, 17, json_type_string},
+ 	{ NULL, 0, 0, 0}
+ };

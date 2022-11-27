@@ -1,0 +1,12 @@
+Index: qsteer-v0.10.3/csm/csmd.json
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csmd.json	2017-05-10 07:16:20.559695140 +0800
++++ qsteer-v0.10.3/csm/csmd.json	2017-05-10 07:18:06.198924350 +0800
+@@ -17,6 +17,7 @@
+ 					"parameters":
+ 					{
+ 						"log_level":"info",
++						"allow_inefficient":1,
+ 					}
+ 				}
+ 			]

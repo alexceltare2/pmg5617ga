@@ -1,0 +1,113 @@
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h	2015-08-01 15:09:11.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h	2015-09-17 16:29:28.859162333 +0800
+@@ -73,13 +73,21 @@
+ #define  MONITOR_WIFI_WLAN_BLINK_INTERVAL_USEC	500000
+ #define  MONITOR_WIFI_WLAN_HANDSHAKING_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_WLAN_HANDSHAKING_BLINK_INTERVAL_USEC	250000
++#ifdef ZYXEL_PATCH
++#define  MONITOR_WIFI_WPS_BLINK_INTERVAL_SEC	0
++#define  MONITOR_WIFI_WPS_BLINK_INTERVAL_USEC	150000
++#define  MONITOR_WIFI_MODE_BLINK_INTERVAL_SEC	0
++#define  MONITOR_WIFI_MODE_BLINK_INTERVAL_USEC	150000
++#define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_SEC	0
++#define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_USEC	150000
++#else
+ #define  MONITOR_WIFI_WPS_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_WPS_BLINK_INTERVAL_USEC	500000
+ #define  MONITOR_WIFI_MODE_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_MODE_BLINK_INTERVAL_USEC	500000
+ #define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_SEC	0
+ #define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_USEC	500000
+-
++#endif
+ typedef enum {
+ 	MONITOR_WIFI_LED_OFF = 0,
+ 	MONITOR_WIFI_LED_BLINK,
+@@ -108,7 +116,11 @@
+ #define  MONITOR_WPS_LED_STATE_TIMEOUT		MONITOR_WIFI_LED_OFF
+ #define  MONITOR_WPS_LED_STATE_OVERLAP		MONITOR_WIFI_LED_OFF
+ #define  MONITOR_WPS_LED_STATE_UNKNOWN		MONITOR_WIFI_LED_OFF
++#ifdef ZYXEL_PATCH
++#define  MONITOR_WPS_LED_STATE_SUCCESS		MONITOR_WIFI_LED_OFF
++#else
+ #define  MONITOR_WPS_LED_STATE_SUCCESS		MONITOR_WIFI_LED_ON
++#endif
+ #define  MONITOR_WPS_ERR_LED_ON			MONITOR_WIFI_LED_ON
+ #define  MONITOR_WPS_ERR_LED_OFF		MONITOR_WIFI_LED_OFF
+ #define  MONITOR_WIFI_QUAL_LED_ON		MONITOR_WIFI_LED_ON
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2015-08-01 15:09:11.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2015-09-17 17:39:39.110768798 +0800
+@@ -824,12 +824,53 @@
+ 	}
+ #ifndef CUSTOMER_SPEC_RGMII
+ 	monitor_wifi_update_mode(wifi_mode, &slow_interval);
++	qcsapi_wps_get_state( vap, &wps_state_str[ 0 ], sizeof( wps_state_str ) )
+ #endif
+ 
++#ifdef ZYXEL_PATCH
++	char wps_state_str[LOCAL_WPS_STATE_LEN];
++	int wps_state_value = (int)MONITOR_WIFI_WPS_UNKNOWN;
++	int monitor_wps = 0, monitor_wlan = 0;
++	
++	if(wifi_mode == qcsapi_access_point){
++		retval = qcsapi_wps_get_state( MONITOR_WIFI_DEFAULT_VAP, (char*)wps_state_str, sizeof( wps_state_str ) );
++		if (retval >= 0) {
++			wps_state_value = atoi(wps_state_str);
++			if(wps_state_value == MONITOR_WIFI_WPS_IN_PROGRESS){
++				monitor_wps = 1;
++			}
++			else{
++				monitor_wlan = 1;
++			}
++		}
++		else{
++			monitor_wlan = 1;
++		}
++		
++		if(monitor_wlan){
++			monitor_wifi_update_wlan(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		}
++		else{
++			monitor_wifi_update_led(MONITOR_WIFI_WLAN_INDEX, MONITOR_WIFI_LED_OFF, &slow_interval);
++		}
++		
++		if(monitor_wps){
++			monitor_wifi_update_wps(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		}
++		else {
++			monitor_wifi_update_led(MONITOR_WIFI_WPS_INDEX, MONITOR_WIFI_LED_OFF, &slow_interval);
++		}
++		
++		monitor_wifi_update_quality(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &current_link_quality, &fast_interval);
++	}
++	else {
++#endif
+ 	monitor_wifi_update_wlan(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
+ 	monitor_wifi_update_wps(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
+ 	monitor_wifi_update_quality(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &current_link_quality, &fast_interval);
+-
++#ifdef ZYXEL_PATCH
++	}
++#endif
+ 	monitor_wifi_set_fast_timer();
+ 
+ 	return 0;
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi.mk
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi.mk	2015-08-01 15:09:11.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi.mk	2015-09-17 16:25:10.251668957 +0800
+@@ -80,6 +80,10 @@
+ TARGET_CFLAGS += -g
+ endif
+ 
++ifeq ($(BR2_ZYXEL_PATCH), y)
++TARGET_CFLAGS += -DZYXEL_PATCH
++endif
++
+ qcsapi:
+ 	$(MAKE) MAKEFLAGS="-j1" -C $(QCSAPI_BUILD_DIR) EXTRA_PROGS="$(QCSAPI_EXTRA_PROGS)" PREFIX="$(TARGET_DIR)" \
+ 		CC=$(TARGET_CC) STRIP=$(STRIP) XCFLAGS="$(TARGET_CFLAGS) $(EXTRA_WARNINGS) $(EXTRA_DEFINES)	\

@@ -1,0 +1,72 @@
+Index: linux-2.6.36/net/ipv4/udp.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/udp.c	2017-10-18 14:43:57.406183276 +0800
++++ linux-2.6.36/net/ipv4/udp.c	2017-10-18 15:13:29.422145464 +0800
+@@ -1133,6 +1133,9 @@
+ 	int peeked;
+ 	int err;
+ 	int is_udplite = IS_UDPLITE(sk);
++#if 1 //Zyxel CVE-2016-10229
++	bool checksum_valid = false;
++#endif
+ 	bool slow;
+ 
+ 	/*
+@@ -1170,11 +1173,19 @@
+ 	 */
+ 
+ 	if (len < ulen || UDP_SKB_CB(skb)->partial_cov) {
++#if 1 //Zyxel CVE-2016-10229
++        checksum_valid = !udp_lib_checksum_complete(skb);
++        if (!checksum_valid)
++#else
+ 		if (udp_lib_checksum_complete(skb))
++#endif
+ 			goto csum_copy_err;
+ 	}
+-
++#if 1 //Zyxel CVE-2016-10229
++	if (checksum_valid || skb_csum_unnecessary(skb))
++#else
+ 	if (skb_csum_unnecessary(skb))
++#endif
+ 		err = skb_copy_datagram_iovec(skb, sizeof(struct udphdr),
+ 					      msg->msg_iov, len);
+ 	else {
+Index: linux-2.6.36/net/ipv6/udp.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/udp.c	2017-10-18 14:43:57.438183275 +0800
++++ linux-2.6.36/net/ipv6/udp.c	2017-10-18 15:18:10.238139472 +0800
+@@ -338,6 +338,9 @@
+ 	int peeked;
+ 	int err;
+ 	int is_udplite = IS_UDPLITE(sk);
++#if 1 //Zyxel CVE-2016-10229
++	bool checksum_valid = false;
++#endif
+ 	int is_udp4;
+ 	bool slow;
+ 
+@@ -376,12 +379,21 @@
+ 	 */
+ 
+ 	if (len < ulen || UDP_SKB_CB(skb)->partial_cov) {
++#if 1 //Zyxel CVE-2016-10229
++        checksum_valid = !udp_lib_checksum_complete(skb);
++        if (!checksum_valid)
++#else
+ 		if (udp_lib_checksum_complete(skb))
++#endif
+ 			goto csum_copy_err;
+ 	}
+ 
++#if 1 //Zyxel CVE-2016-10229
++	if (checksum_valid || skb_csum_unnecessary(skb))
++#else
+ 	if (skb_csum_unnecessary(skb))
+-		err = skb_copy_datagram_iovec(skb, sizeof(struct udphdr),
++#endif
++	err = skb_copy_datagram_iovec(skb, sizeof(struct udphdr),
+ 					      msg->msg_iov,len);
+ 	else {
+ 		err = skb_copy_and_csum_datagram_iovec(skb, sizeof(struct udphdr), msg->msg_iov);

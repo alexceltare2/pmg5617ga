@@ -1,0 +1,43 @@
+Index: linux-2.6.36/drivers/usb/host/mtk_xhci/xhci-ring.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/host/mtk_xhci/xhci-ring.c	2017-04-24 16:55:13.272181190 +0800
++++ linux-2.6.36/drivers/usb/host/mtk_xhci/xhci-ring.c	2017-04-24 16:59:07.780181190 +0800
+@@ -1373,8 +1373,23 @@
+ 	}
+ 	/* Does the DMA address match our internal dequeue pointer address? */
+ 	if (cmd_dma != (u64) cmd_dequeue_dma) {
++		#ifdef TCSUPPORT_USBHOST
++        /* For MTK HC which will use link TRB in event ring completion.
++         * When COMP_CMD_STOP event occured, MTK HC will not skip link TRB.
++         * */
++        if (GET_COMP_CODE(le32_to_cpu(event->status)) == COMP_CMD_STOP) {
++			xhci_dbg(xhci,
++						"Deq pointer mismatch on COMP_CMD_STOP: (0x%llx dma)\n",
++						cmd_dma);
++        }
++        else {
++			xhci->error_bitmask |= 1 << 5;
++			return;
++        }
++		#else
+ 		xhci->error_bitmask |= 1 << 5;
+ 		return;
++		#endif
+ 	}
+ 
+ 	if ((GET_COMP_CODE(le32_to_cpu(event->status)) == COMP_CMD_ABORT) ||
+@@ -1390,6 +1405,14 @@
+ 			inc_deq(xhci, xhci->cmd_ring);
+ 			return;
+ 		}
++		#ifdef TCSUPPORT_USBHOST
++        else {
++			/* It's the case of COMP_CMD_STOP completion,
++			 * or, it's the case that the aborted command does not exist.
++			 * */
++			return;
++        }
++		#endif
+ 	}
+ 
+ 	switch (le32_to_cpu(xhci->cmd_ring->dequeue->generic.field[3])

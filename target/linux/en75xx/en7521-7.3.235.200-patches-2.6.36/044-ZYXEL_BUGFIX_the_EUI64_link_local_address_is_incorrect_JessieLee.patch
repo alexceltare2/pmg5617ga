@@ -1,0 +1,29 @@
+Index: linux-2.6.36/net/ipv6/addrconf.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/addrconf.c	2017-04-27 16:55:07.930877149 +0800
++++ linux-2.6.36/net/ipv6/addrconf.c	2017-04-27 17:11:04.768819238 +0800
+@@ -2423,8 +2423,12 @@
+ 		addr.s6_addr32[0] = htonl(0xFE800000);
+ 		
+ 		//printk("addrconf_dev_config:interface name:%s",dev->name);
+-		/*set br0 local link address as fe80::1*/
+ 		if(strstr(dev->name, "br") != NULL){
++ 			if (ipv6_generate_eui64(addr.s6_addr + 8, dev) == 0)
++                		addrconf_add_linklocal(idev, &addr);
++		}
++		else{
++			/*set br0 local link address as fe80::1*/
+ 			addr.s6_addr[8] = 0;
+ 			addr.s6_addr[9] = 0;
+ 			addr.s6_addr[10] = 0;
+@@ -2435,10 +2439,6 @@
+ 			addr.s6_addr[15] = 1;
+ 			addrconf_add_linklocal(idev, &addr);
+ 		}
+-		else{
+-		if (ipv6_generate_eui64(addr.s6_addr + 8, dev) == 0)
+-			addrconf_add_linklocal(idev, &addr);
+-		}
+ 	}
+ #else
+ 	memset(&addr, 0, sizeof(struct in6_addr));

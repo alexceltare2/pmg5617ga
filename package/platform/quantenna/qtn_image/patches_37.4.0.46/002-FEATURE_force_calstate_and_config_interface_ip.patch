@@ -1,0 +1,107 @@
+--- a/source/buildroot/target/generic/target_arc_skeleton/etc/init.d/rcS
++++ b/source/buildroot/target/generic/target_arc_skeleton/etc/init.d/rcS
+@@ -13,8 +13,13 @@ calstate=`get_bootval calstate`
+ if [ $calstate == "0" ]; then
+ 	# calstate 0 - System with only serial console.
+ 	# No driver loading, no starting of daemons etc
+-	echo "calstate is 0 (console only)"
+-	exit 0
++	## zyxel modify start
++	set_bootval calstate 3
++	calstate=`get_bootval calstate`
++	echo "modify calstate to 3 ......"
++	#echo "calstate is 0 (console only)"
++	#exit 0
++	## zyxel modify end
+ fi
+ 
+ # Start all init scripts in /etc/init.d
+--- a/source/buildroot/target/device/Quantenna/Ruby/ruby.mk
++++ b/source/buildroot/target/device/Quantenna/Ruby/ruby.mk
+@@ -124,12 +124,14 @@ ruby-initd-files-y =	\
+ 	S91dhclient	\
+ 	S92httpd	\
+ 
++ruby-initd-files-$(BR2_ZYXEL_PATCH) += S93zyxel_network
+ ruby-initd-files-$(BR2_PACKAGE_BOA)	+= S42boa
+ 
+ .PHONY: FORCE
+ $(TARGET_DIR)/etc/init.d/%: $(RUBY_FS_PATCH_DIR)/% FORCE
+ 	# Copying ${<F}
+ 	cp -f $< $@
++	chmod a+x $@
+ 
+ ruby_initd: $(ruby-initd-files-y:%=$(TARGET_DIR)/etc/init.d/%)
+ 
+--- a/source/configs/topaz_rgmii_config
++++ b/source/configs/topaz_rgmii_config
+@@ -615,6 +615,12 @@ BR2_TARGET_RUBY_STATELESS=y
+ # BR2_TARGET_GENERIC_DEV_SYSTEM is not set
+ 
+ #
++# ZyXEL Features
++#
++#prefix0#buildroot/#
++BR2_ZYXEL_PATCH=y
++
++#
+ # Busybox configuration
+ #
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+--- a/source/buildroot/Config.in
++++ b/source/buildroot/Config.in
+@@ -378,6 +378,16 @@ config BR2_INET_IPV6
+ 
+ endmenu
+ 
++menu "ZyXEL Features"
++
++config BR2_ZYXEL_PATCH
++	bool "Enable ZyXEL features"
++	default n
++	help
++	  Enable ZyXEL features.
++	  
++endmenu
++
+ source "toolchain/Config.in"
+ 
+ source "package/Config.in"
+--- /dev/null
++++ b/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network
+@@ -0,0 +1,35 @@
++#!/bin/sh
++#
++# Config RPC interface IP to 1.1.1.2
++#
++
++do_staticip=`get_wifi_config wifi0 staticip`
++
++start() {
++	if [ $do_staticip == "1" ]; then
++		ifconfig br0 0.0.0.0
++	fi
++	ifconfig br0:qtn 1.1.1.2 netmask 255.255.255.252
++}
++
++stop() {
++	ifconfig br0:qtn down
++}
++
++case "$1" in
++        start)
++                start
++                ;;
++        stop)
++                stop
++                ;;
++        restart|reload)
++				stop
++                start
++                ;;
++        *)
++                echo $"Usage: $0 {start|stop|restart}"
++                exit 1
++esac
++
++exit $?

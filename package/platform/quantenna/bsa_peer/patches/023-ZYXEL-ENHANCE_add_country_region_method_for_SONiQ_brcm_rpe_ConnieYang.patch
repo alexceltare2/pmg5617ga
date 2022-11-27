@@ -1,0 +1,70 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-05-16 11:28:03.413883566 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-05-16 11:30:00.521886723 +0800
+@@ -163,38 +163,42 @@
+ {
+ 	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
+ 	int i,k = 0;
+-	char *file_path = "/tmp/.country_res";
++	char *file_path = "/tmp/.channel_res";
+ 	char cmd[64] = {0};
+ 	char buf[64] = {0};
+ 	FILE *fp = NULL;
+ 	char region[5] = {0};
+ 	char *cp = NULL;
+ 
+-	sprintf(cmd, "wlctl -i %s country > %s", ifname, file_path);
+-	system(cmd);
++	if(band == BAND_24G) {
++		sprintf(cmd, "wlctl -i %s channels | grep 12 > %s", ifname, file_path);
++		system(cmd);
+ 
+-	if((fp = fopen(file_path, "r"))) {
+-		if(fgets(buf, sizeof(buf), fp) != NULL) {
+-            cp = strchr(buf, '(');
+-            if(cp) {
+-            	cp += 1;
+-            	i = 0;
+-            	while(i<4) {
+-                	if(*cp == '/') {
+-                		region[i] = '\0';
+-                		break;
+-                	}
+-                	else {
+-                		region[i] = *cp;
+-                		cp++;
+-                	}
+-                	i++;
+-                }
+-            }
++		if ((fp = fopen(file_path, "r")) != NULL) {
++			if(fgets(buf, sizeof(buf), fp) != NULL) {
++				sprintf(region, "EU\0");
++			}
++			else {
++				sprintf(region, "US\0");
++			}
++			fclose(fp);
++			remove(file_path);
++		}
++	}
++	else {
++		sprintf(cmd, "wlctl -i %s channels | grep 149 > %s", ifname, file_path);
++		system(cmd);
+ 
++		if ((fp = fopen(file_path, "r")) != NULL) {
++			if(fgets(buf, sizeof(buf), fp) != NULL) {
++				sprintf(region, "US\0");
++			}
++			else {
++				sprintf(region, "EU\0");
++			}
++			fclose(fp);
++			remove(file_path);
+ 		}
+-		fclose(fp);
+-		unlink(file_path);
+ 	}
+ 
+ 	bsa_printf(BSA_DEBUG, "BSA_PEER:[%s] region %s, band %d, CurBandwidth %d, channel %d, sideband %d\n",

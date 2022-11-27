@@ -1,0 +1,563 @@
+Index: linux-2.6.36/include/linux/foe_hook.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/foe_hook.h	2018-06-29 15:55:46.924409924 +0800
++++ linux-2.6.36/include/linux/foe_hook.h	2018-06-29 15:55:47.284426725 +0800
+@@ -194,6 +194,7 @@
+ #endif
+ extern int (*ra_sw_nat_hook_rx) (struct sk_buff * skb);
+ extern int (*ra_sw_nat_ds_offload) (struct sk_buff * skb, int *dp);
++extern int (*ra_sw_nat_get_offload_type) (struct sk_buff * skb);
+ extern int (*ra_sw_nat_hook_update_dp)(int index, int dp);
+ extern int (*ra_sw_nat_hook_update_vlan)(int index,int outer_vlan,int inner_vlan);
+ 
+Index: linux-2.6.36/net/core/ecnt_net_utility.c
+===================================================================
+--- linux-2.6.36.orig/net/core/ecnt_net_utility.c	2018-06-29 15:55:47.212423363 +0800
++++ linux-2.6.36/net/core/ecnt_net_utility.c	2018-06-29 15:58:08.459212839 +0800
+@@ -1,181 +1,352 @@
+-/***************************************************************
+-Copyright Statement:
+-
+-This software/firmware and related documentation (¡°EcoNet Software¡±) 
+-are protected under relevant copyright laws. The information contained herein 
+-is confidential and proprietary to EcoNet (HK) Limited (¡°EcoNet¡±) and/or 
+-its licensors. Without the prior written permission of EcoNet and/or its licensors, 
+-any reproduction, modification, use or disclosure of EcoNet Software, and 
+-information contained herein, in whole or in part, shall be strictly prohibited.
+-
+-EcoNet (HK) Limited  EcoNet. ALL RIGHTS RESERVED.
+-
+-BY OPENING OR USING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY 
+-ACKNOWLEDGES AND AGREES THAT THE SOFTWARE/FIRMWARE AND ITS 
+-DOCUMENTATIONS (¡°ECONET SOFTWARE¡±) RECEIVED FROM ECONET 
+-AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON AN ¡°AS IS¡± 
+-BASIS ONLY. ECONET EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES, 
+-WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED 
+-WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, 
+-OR NON-INFRINGEMENT. NOR DOES ECONET PROVIDE ANY WARRANTY 
+-WHATSOEVER WITH RESPECT TO THE SOFTWARE OF ANY THIRD PARTIES WHICH 
+-MAY BE USED BY, INCORPORATED IN, OR SUPPLIED WITH THE ECONET SOFTWARE. 
+-RECEIVER AGREES TO LOOK ONLY TO SUCH THIRD PARTIES FOR ANY AND ALL 
+-WARRANTY CLAIMS RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES 
+-THAT IT IS RECEIVER¡¯S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD 
+-PARTY ALL PROPER LICENSES CONTAINED IN ECONET SOFTWARE.
+-
+-ECONET SHALL NOT BE RESPONSIBLE FOR ANY ECONET SOFTWARE RELEASES 
+-MADE TO RECEIVER¡¯S SPECIFICATION OR CONFORMING TO A PARTICULAR 
+-STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND 
+-ECONET'S ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE ECONET 
+-SOFTWARE RELEASED HEREUNDER SHALL BE, AT ECONET'S SOLE OPTION, TO 
+-REVISE OR REPLACE THE ECONET SOFTWARE AT ISSUE OR REFUND ANY SOFTWARE 
+-LICENSE FEES OR SERVICE CHARGES PAID BY RECEIVER TO ECONET FOR SUCH 
+-ECONET SOFTWARE.
+-***************************************************************/
+-
+-/************************************************************************
+-*                  I N C L U D E S
+-*************************************************************************
+-*/
+-#include <linux/netdevice.h>
+-#include <linux/skbuff.h>
+-#include <linux/if_vlan.h>
+-#include <linux/if_pppox.h>
+-#include <linux/ip.h>
+-#ifdef TCSUPPORT_IPV6
+-#include <linux/ipv6.h>
+-#endif
+-#include <net/tcp.h>
+-
+-
+-/************************************************************************
+-*                  D E F I N E S   &   C O N S T A N T S
+-*************************************************************************
+-*/
+-
+-/************************************************************************
+-*                  M A C R O S
+-*************************************************************************
+-*/
+-
+-/************************************************************************
+-*                  D A T A   T Y P E S
+-*************************************************************************
+-*/
+-
+-/************************************************************************
+-*                  E X T E R N A L   D A T A   D E C L A R A T I O N S
+-*************************************************************************
+-*/
+-
+-/************************************************************************
+-*                  F U N C T I O N   D E C L A R A T I O N S
+-*************************************************************************
+-*/
+-
+-
+-/************************************************************************
+-*                  P U B L I C   D A T A
+-*************************************************************************
+-*/
+-int (*match_multicast_vtag_check)
+-(struct sk_buff *skb, struct net_device *vdev);
+-EXPORT_SYMBOL(match_multicast_vtag_check);
+-#if !defined(TCSUPPORT_CT_VLAN_TAG)
+-int (*match_multicast_vtag)(struct sk_buff *skb, struct net_device *vdev);
+-EXPORT_SYMBOL(match_multicast_vtag);
++/***************************************************************
++Copyright Statement:
++
++This software/firmware and related documentation (¡°EcoNet Software¡±)
++are protected under relevant copyright laws. The information contained herein
++is confidential and proprietary to EcoNet (HK) Limited (¡°EcoNet¡±) and/or
++its licensors. Without the prior written permission of EcoNet and/or its licensors,
++any reproduction, modification, use or disclosure of EcoNet Software, and
++information contained herein, in whole or in part, shall be strictly prohibited.
++
++EcoNet (HK) Limited  EcoNet. ALL RIGHTS RESERVED.
++
++BY OPENING OR USING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY
++ACKNOWLEDGES AND AGREES THAT THE SOFTWARE/FIRMWARE AND ITS
++DOCUMENTATIONS (¡°ECONET SOFTWARE¡±) RECEIVED FROM ECONET
++AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON AN ¡°AS IS¡±
++BASIS ONLY. ECONET EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
++WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
++WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
++OR NON-INFRINGEMENT. NOR DOES ECONET PROVIDE ANY WARRANTY
++WHATSOEVER WITH RESPECT TO THE SOFTWARE OF ANY THIRD PARTIES WHICH
++
++AY BE USED BY, INCORPORATED IN, OR SUPPLIED WITH THE ECONET SOFTWARE.
++RECEIVER AGREES TO LOOK ONLY TO SUCH THIRD PARTIES FOR ANY AND ALL
++WARRANTY CLAIMS RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
++THAT IT IS RECEIVER¡¯S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD
++PARTY ALL PROPER LICENSES CONTAINED IN ECONET SOFTWARE.
++
++ECONET SHALL NOT BE RESPONSIBLE FOR ANY ECONET SOFTWARE RELEASES
++
++ADE TO RECEIVER¡¯S SPECIFICATION OR CONFORMING TO A PARTICULAR
++STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND
++ECONET'S ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE ECONET
++SOFTWARE RELEASED HEREUNDER SHALL BE, AT ECONET'S SOLE OPTION, TO
++REVISE OR REPLACE THE ECONET SOFTWARE AT ISSUE OR REFUND ANY SOFTWARE
++LICENSE FEES OR SERVICE CHARGES PAID BY RECEIVER TO ECONET FOR SUCH
++ECONET SOFTWARE.
++***************************************************************/
++
++/************************************************************************
++*                  I N C L U D E S
++*************************************************************************
++*/
++#include <linux/netdevice.h>
++#include <linux/skbuff.h>
++#include <linux/if_vlan.h>
++#include <linux/if_pppox.h>
++#include <linux/ip.h>
++#ifdef TCSUPPORT_IPV6
++#include <linux/ipv6.h>
+ #endif
+-
++#include <net/tcp.h>
++
++
++/************************************************************************
++*                  D E F I N E S   &   C O N S T A N T S
++*************************************************************************
++*/
++#define RPS_QUEUE_NUM   2
++
++/************************************************************************
++*                  M A C R O S
++*************************************************************************
++*/
++#define MAX_QUEUE_LEN 2000
++
++/************************************************************************
++*                  D A T A   T Y P E S
++*************************************************************************
++*/
++struct ecnt_softnet_data{
++	struct sk_buff_head	    process_queue;
++	struct call_single_data	csd;
++	unsigned            processed;
++	unsigned		    dropped;
++	struct sk_buff_head	    input_pkt_queue;
++	struct napi_struct	    napi;
++};
++
++/************************************************************************
++*                  E X T E R N A L   D A T A   D E C L A R A T I O N S
++*************************************************************************
++*/
++
++/************************************************************************
++*                  F U N C T I O N   D E C L A R A T I O N S
++*************************************************************************
++*/
++
++
++/************************************************************************
++*                  P U B L I C   D A T A
++*************************************************************************
++*/
++struct ecnt_softnet_data rps_queue[RPS_QUEUE_NUM];
++int (*wlan_ratelimit_enqueue_hook) (struct sk_buff * skb,unsigned char direction) = NULL;
++EXPORT_SYMBOL(wlan_ratelimit_enqueue_hook);
++int (*match_multicast_vtag_check)
++(struct sk_buff *skb, struct net_device *vdev);
++EXPORT_SYMBOL(match_multicast_vtag_check);
++#if !defined(TCSUPPORT_CT_VLAN_TAG)
++int (*match_multicast_vtag)(struct sk_buff *skb, struct net_device *vdev);
++EXPORT_SYMBOL(match_multicast_vtag);
++#endif
++
+ #if defined(ZYXEL_GEMPORT_RATE_LIMIT)
+ int (*gpon_downstream_mapping_switch)(void);
+ EXPORT_SYMBOL(gpon_downstream_mapping_switch);
+ #endif
+-/************************************************************************
+-*                  F U N C T I O N   D E F I N I T I O N S
+-*************************************************************************
+-*/
+-
+-/****************************************************************************
+-**function name
+-	 __vlan_proto
+-**description:
+-	get protocol via skb
+-**return 
+-	eth_type
+-**parameter:
+-	skb: the packet information
+-****************************************************************************/
+-static inline __be16 __vlan_proto(const struct sk_buff *skb)
+-{
+-	return vlan_eth_hdr(skb)->h_vlan_encapsulated_proto;
+-}
+-
+-/****************************************************************************
+-**function name
+-	 check_ppp_udp_multicast
+-**description:
+-	check multicast packet in downstream
+-**return 
+-	0:	check ok or ignore
+-	-1:	fail
+-**parameter:
+-	skb: the packet information
+-	vdev: virtual net device
+-****************************************************************************/
+-int check_ppp_udp_multicast
+-(struct sk_buff *skb, struct net_device *vdev)
+-{
+-
+-	return 0; /* check ok or ignore. */
+-}
+-EXPORT_SYMBOL(check_ppp_udp_multicast);
+-
+-/****************************************************************************
+-**function name
+-	 __is_ip_udp
+-**description:
+-	check whether packet is IP udp packets.
+-**return 
+-	0:	check ok or ignore
+-	-1:	fail
+-**parameter:
+-	skb: the packet information
+-	vdev: virtual net device
+-****************************************************************************/
+-int __is_ip_udp(struct sk_buff *skb)
+-{
++/************************************************************************
++*                  F U N C T I O N   D E F I N I T I O N S
++*************************************************************************
++*/
++
++/****************************************************************************
++**function name
++	 __vlan_proto
++**description:
++	get protocol via skb
++**return
++	eth_type
++**parameter:
++	skb: the packet information
++****************************************************************************/
++static inline __be16 __vlan_proto(const struct sk_buff *skb)
++{
++	return vlan_eth_hdr(skb)->h_vlan_encapsulated_proto;
++}
++
++/****************************************************************************
++**function name
++	 check_ppp_udp_multicast
++**description:
++	check multicast packet in downstream
++**return
++	0:	check ok or ignore
++	-1:	fail
++**parameter:
++	skb: the packet information
++	vdev: virtual net device
++****************************************************************************/
++int check_ppp_udp_multicast
++(struct sk_buff *skb, struct net_device *vdev)
++{
++
++	return 0; /* check ok or ignore. */
++}
++EXPORT_SYMBOL(check_ppp_udp_multicast);
++
++/****************************************************************************
++**function name
++	 __is_ip_udp
++**description:
++	check whether packet is IP udp packets.
++**return
++	0:	check ok or ignore
++	-1:	fail
++**parameter:
++	skb: the packet information
++	vdev: virtual net device
++****************************************************************************/
++int __is_ip_udp(struct sk_buff *skb)
++{
+ #if !defined(TCSUPPORT_CT_PON_SC) 
+-	return 0;
++	return 0;
+ #endif
+-}
+-EXPORT_SYMBOL(__is_ip_udp);
+-
+-/****************************************************************************
+-**function name
+-	 tr143RxShortCut
+-**description:
+-	tr143 test shortcut data path
+-**return 
+-	0:	receive succeed.
+-	-1:	fail
+-**parameter:
+-	skb: the packet information
+-	vlanLayer: vlan layer counts
+-	ifaceidx: interface index
+-	iptype: ip type, 1: IP, 2:PPP, 3:dslite+IP, 4:dslite+PPP 
+-****************************************************************************/
+-int tr143RxShortCut(int enable
+-, struct sk_buff *skb
+-, int vlanLayer
+-, int ifaceidx
+-, int iptype
+-)
+-{
+-
+-	return 0;
+-}
+-EXPORT_SYMBOL(tr143RxShortCut);
+-
+-
++}
++EXPORT_SYMBOL(__is_ip_udp);
++
++/****************************************************************************
++**function name
++	 tr143RxShortCut
++**description:
++	tr143 test shortcut data path
++**return
++	0:	receive succeed.
++	-1:	fail
++**parameter:
++	skb: the packet information
++	vlanLayer: vlan layer counts
++	ifaceidx: interface index
++	iptype: ip type, 1: IP, 2:PPP, 3:dslite+IP, 4:dslite+PPP
++****************************************************************************/
++int tr143RxShortCut(int enable
++, struct sk_buff *skb
++, int vlanLayer
++, int ifaceidx
++, int iptype
++)
++{
++
++	return 0;
++}
++EXPORT_SYMBOL(tr143RxShortCut);
++
++int enqueue_to_cpu_queue(struct sk_buff *skb, int cpu, int queue)
++{
++    struct ecnt_softnet_data *sd;
++    unsigned long flags;
++    unsigned int queue_len;
++
++    sd = &rps_queue[queue];
++
++    local_irq_save(flags);
++    spin_lock(&sd->input_pkt_queue.lock);
++    queue_len = skb_queue_len(&sd->input_pkt_queue);
++    if (queue_len <= MAX_QUEUE_LEN) {
++        if (queue_len){
++enqueue:
++            __skb_queue_tail(&sd->input_pkt_queue, skb);
++            spin_unlock(&sd->input_pkt_queue.lock);
++            local_irq_restore(flags);
++            return NET_RX_SUCCESS;
++        }
++        if(!__test_and_set_bit(NAPI_STATE_SCHED, &sd->napi.state))
++        {
++            if (cpu != get_cpu()){
++                if(cpu_online(cpu)){
++                    __smp_call_function_single(cpu, &sd->csd, 0);
++                }
++            }
++            else{
++                __napi_schedule(&sd->napi);
++            }
++            put_cpu();
++        }
++        goto enqueue;
++    }
++
++    sd->dropped++;
++    spin_unlock(&sd->input_pkt_queue.lock);
++
++    local_irq_restore(flags);
++
++    kfree_skb(skb);
++    return NET_RX_DROP;
++}
++EXPORT_SYMBOL(enqueue_to_cpu_queue);
++
++inline int ecnt_dev_xmit(struct ecnt_softnet_data *sd, struct sk_buff * skb)
++{
++    if(skb->dev){
++        if((wlan_ratelimit_enqueue_hook) &&
++            ('r' == skb->dev->name[0]) &&
++            (1 == wlan_ratelimit_enqueue_hook(skb,1))){/*wifi tx*/
++            sd->processed++;
++		    return 0;
++        }
++        sd->processed++;
++        skb->dev->netdev_ops->ndo_start_xmit(skb, skb->dev);
++    }
++    else{
++        sd->dropped++;
++        kfree_skb(skb);
++    }
++
++    return 0;
++}
++
++inline int ecnt_rps_poll(struct napi_struct *napi, int quota, struct ecnt_softnet_data *sd,
++            int (*ecnt_xmit)(struct ecnt_softnet_data *sd, struct sk_buff * skb))
++{
++    int work = 0;
++    napi->weight = quota;
++    local_irq_disable();
++    while (work < quota) {
++        struct sk_buff *skb;
++        unsigned int qlen;
++        while ((skb = __skb_dequeue(&sd->process_queue))) {
++            local_irq_enable();
++            ecnt_xmit(sd, skb);
++            local_irq_disable();
++            if (++work >= quota) {
++                local_irq_enable();
++                return work;
++            }
++        }
++
++        spin_lock(&sd->input_pkt_queue.lock);
++        qlen = skb_queue_len(&sd->input_pkt_queue);
++        if (qlen)
++            skb_queue_splice_tail_init(&sd->input_pkt_queue,
++                           &sd->process_queue);
++
++        if (qlen < quota - work) {
++            list_del(&napi->poll_list);
++            napi->state = 0;
++            quota = work + qlen;
++        }
++
++        spin_unlock(&sd->input_pkt_queue.lock);
++    }
++    local_irq_enable();
++
++    return work;
++}
++
++inline int ecnt_rps_queue0_poll(struct napi_struct *napi, int quota)
++{
++	struct ecnt_softnet_data *sd = &rps_queue[0];
++
++	return ecnt_rps_poll(napi, quota, sd, ecnt_dev_xmit);
++}
++
++inline int ecnt_rps_queue1_poll(struct napi_struct *napi, int quota)
++{
++	struct ecnt_softnet_data *sd = &rps_queue[1];
++
++	return ecnt_rps_poll(napi, quota, sd, ecnt_dev_xmit);
++}
++
++void ecnt_rps_napi_init(void)
++{
++    int i;
++
++    for(i=0;i<RPS_QUEUE_NUM;i++)
++    {
++        memset(&rps_queue[i], 0, sizeof(rps_queue[i]));
++
++        skb_queue_head_init(&rps_queue[i].input_pkt_queue);
++        skb_queue_head_init(&rps_queue[i].process_queue);
++
++        rps_queue[i].csd.func = __napi_schedule;
++        rps_queue[i].csd.info = &rps_queue[i].napi;
++        rps_queue[i].csd.flags = 0;
++
++        rps_queue[i].napi.weight = 128;
++        rps_queue[i].napi.gro_list = NULL;
++        rps_queue[i].napi.gro_count = 0;
++    }
++
++    rps_queue[0].napi.poll = ecnt_rps_queue0_poll;
++    rps_queue[1].napi.poll = ecnt_rps_queue1_poll;
++
++    return;
++}
++EXPORT_SYMBOL(ecnt_rps_napi_init);
++
++void ecnt_rps_print_stat(void)
++{
++    int i;
++
++    for(i=0;i<RPS_QUEUE_NUM;i++)
++    {
++        printk("rps_queue[%d]  processed          %d\n", i, rps_queue[i].processed);
++        printk("rps_queue[%d]  dropped            %d\n", i, rps_queue[i].dropped);
++    }
++
++    return;
++}
++EXPORT_SYMBOL(ecnt_rps_print_stat);
++
+Index: linux-2.6.36/net/nat/foe_hook/hook.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/foe_hook/hook.c	2018-06-29 15:55:46.924409924 +0800
++++ linux-2.6.36/net/nat/foe_hook/hook.c	2018-06-29 15:55:47.284426725 +0800
+@@ -42,6 +42,7 @@
+ #endif
+ int (*ra_sw_nat_hook_rx) (struct sk_buff * skb) = NULL;
+ int (*ra_sw_nat_ds_offload) (struct sk_buff * skb, int *dp) = NULL;
++int (*ra_sw_nat_get_offload_type) (struct sk_buff * skb) = NULL;
+ int (*ra_sw_nat_hook_update_dp)(int index, int dp) = NULL;
+ int (*ra_sw_nat_hook_update_vlan)(int index,int outer_vlan,int inner_vlan) = NULL;
+ 
+@@ -150,6 +151,7 @@
+ 
+ EXPORT_SYMBOL(ra_sw_nat_hook_rx);
+ EXPORT_SYMBOL(ra_sw_nat_ds_offload);
++EXPORT_SYMBOL(ra_sw_nat_get_offload_type);
+ EXPORT_SYMBOL(ra_sw_nat_hook_update_dp);
+ EXPORT_SYMBOL(ra_sw_nat_hook_update_vlan);
+ 

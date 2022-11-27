@@ -1,0 +1,18 @@
+Index: linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/chips/spi_nand_flash.c	2017-04-24 20:51:06.725259146 +0800
++++ linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c	2017-04-26 01:20:24.607899879 +0800
+@@ -3834,8 +3834,13 @@
+ 	
+ 	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_PROBE_ERROR;	
+ 	
++#if 1 //Zyxel,remind #28736
++	/* 1. set SFC Clock to MAX, 50MHZ  */
++	spi_controller_clk = 50;
++#else
+ 	/* 1. set SFC Clock to 25MHZ */
+ 	spi_controller_clk = 25;
++#endif
+ 	if(isEN7526c) {
+ 		spi_nand_set_clock_speed(400/(spi_controller_clk * 2));
+ 	} else {

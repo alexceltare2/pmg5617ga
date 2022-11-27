@@ -1,0 +1,328 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-06 22:53:26.186112054 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-06 22:53:26.214111881 +0800
+@@ -294,7 +294,7 @@
+ 	bsa_printf(BSA_DEBUG, "BSA_PEER: Send deauth for station "MACSTR"; ifname =%s to driver",
+ 			MAC2STR(deauth_sta_info->sta_mac), bsa_conf_info[index].ifname);
+ 
+-	sprintf(buf, "zywlctl -i %s disassociate %s", bsa_conf_info[index].ifname, deauth_sta_info->sta_mac);
++	sprintf(buf, "zywlctl -i %s disassociate set "MACSTR"", bsa_conf_info[index].ifname, MAC2STR(deauth_sta_info->sta_mac));
+ 	system(buf);
+ 
+ 	return retval;
+@@ -393,7 +393,13 @@
+ {
+ 	struct bsa_peer_entity *bsa_peer = priv;
+ 	struct ieee80211_bsa_sta_stats *bsa_sta_stats = NULL;
++	zy_sta_info_s sta_info;
+ 	int retval = 0;
++	char buf[128] = {0};
++	int len = sizeof(buf)-1;
++	FILE *fp = NULL;
++	static char *filename = "/tmp/.assoclist_result";
++	int idx = 0;
+ 
+ 	if ((priv == NULL) || (cmd_info == NULL))
+ 		return -EINVAL;
+@@ -401,7 +407,6 @@
+ 	if (bsa_peer->ioctl_sock < 0)
+ 		return -EINVAL;
+ 
+-#if 0
+ 	bsa_sta_stats = (struct ieee80211_bsa_sta_stats *)calloc (1, sizeof (struct ieee80211_bsa_sta_stats));
+ 
+ 	if (!bsa_sta_stats)
+@@ -411,20 +416,46 @@
+ 	bsa_printf(BSA_DEBUG, "BSA_PEER: get sta clients stats for ifname=%s client "MACSTR"",\
+ 			bsa_conf_info[index].ifname, MAC2STR(bsa_sta_stats->sta_mac));
+ 
+-	if (bsa_sub_ioctl_command(bsa_peer->ioctl_sock, bsa_conf_info[index].ifname,
+-				SIOCDEV_SUBIO_GET_BSA_STA_STATS, bsa_sta_stats,
+-				sizeof(struct ieee80211_bsa_sta_stats))) {
+-		free (bsa_sta_stats);
+-		return -EINVAL;
++	sprintf(buf, "wlctl -i %s assoclist > %s", bsa_conf_info[index].ifname, filename);
++	system(buf);
++	idx = 0;
++	if((fp = fopen(filename, "r"))){
++		while(fgets(buf, len, fp) != NULL) {
++			if(!strncmp(buf, "assoclist", 9)){
++				sscanf(buf, "assoclist %hhX:%hhX:%hhX:%hhX:%hhX:%hhX",
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[0]),
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[1]),
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[2]),
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[3]),
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[4]),
++					&(bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac[5]));
++
++			    zyget_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'b');
++			    zyget_sta_info(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info, 'd');
++			    zyget_sta_rssi(bsa_conf_info[index].ifname, bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].sta_mac, &sta_info);
++
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_rx_pkt = sta_info.rxPackets;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_tx_pkt = sta_info.txPackets;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].rx_phy_rate = sta_info.lastRxRate;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].tx_phy_rate = sta_info.lastTxRate;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].rssi_dbm = sta_info.rssi;
++				idx++;
++			}
++		}
++		bsa_sta_stats->num_sta = idx;
++		fclose(fp);
++		unlink(filename);
+ 	}
+ 
++	bsa_printf(BSA_DEBUG, "BSA_PEER: get sta clients stats for ifname=%s count %d",
++			bsa_conf_info[index].ifname, bsa_sta_stats->num_sta);
++
+ 	if (bsa_sta_stats->num_sta) {
+ 		bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_STA_PHY_STATS, bsa_conf_info[index].bssid
+ 			, (uint8_t *)bsa_sta_stats, sizeof(struct ieee80211_bsa_sta_stats));
+ 	}
+ 
+ 	free (bsa_sta_stats);
+-#endif
+ 	return retval;
+ }
+ 
+@@ -502,12 +533,86 @@
+ 
+ int bsa_brcm_get_associated_stations_info(void *priv, int index)
+ {
++	struct bsa_peer_entity *bsa_peer = priv;
+ 	int retval = 0;
++	struct bsa_drv_connect_compl_event_info *connect_event;
++	zy_sta_info_s sta_info;
++	char buf[128] = {0};
++	int len = sizeof(buf)-1;
++	FILE *fp = NULL;
++	static char *filename = "/tmp/.assoclist_result";
++	static char *CurChannel_file = "/tmp/.curr_channel";
++	int idx = 0;
++	uint16_t channel;
+ 
+-	printf("[%s]: TODO\n", __FUNCTION__);
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Get interface info for ifname %s", bsa_conf_info[index].ifname);
++
++	// AP chanspec
++	sprintf(buf, "wlctl -i %s chanspec > %s", bsa_conf_info[index].ifname, CurChannel_file);
++	system(buf);
++
++	fp = fopen(CurChannel_file, "r");
++	if(fp != NULL) {
++		while( fgets( buf, len, fp ) ) {
++			sscanf("%hu %[^(*]", &channel);
++		}
++		fclose(fp);
++		unlink(CurChannel_file);
++	}
++
++	sprintf(buf, "wlctl -i %s assoclist > %s", bsa_conf_info[index].ifname, filename);
++	system(buf);
++	idx = 0;
++	if((fp = fopen(filename, "r"))){
++		while(fgets(buf, len, fp) != NULL) {
++			if(!strncmp(buf, "assoclist", 9)){
++
++				connect_event = (struct bsa_drv_connect_compl_event_info *)calloc (1, sizeof (struct bsa_drv_connect_compl_event_info));
++
++				if (!connect_event)
++					return -ENOMEM;
++
++				sscanf(buf, "assoclist %hhX:%hhX:%hhX:%hhX:%hhX:%hhX",
++					&(connect_event->sta_mac[0]),
++					&(connect_event->sta_mac[1]),
++					&(connect_event->sta_mac[2]),
++					&(connect_event->sta_mac[3]),
++					&(connect_event->sta_mac[4]),
++					&(connect_event->sta_mac[5]));
++
++			    zyget_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'b');
++			    zyget_sta_info(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info, 'd');
++			    zyget_sta_rssi(bsa_conf_info[index].ifname, connect_event->sta_mac, &sta_info);
++
++			    connect_event->rssi = sta_info.rssi;
++			    connect_event->rss = sta_info.rx_ss_info;
++			    connect_event->max_phy_rate = sta_info.max_phy_rate;
++			    connect_event->curr_band = BSA_OPER_BAND_2G;
++			    connect_event->channel = channel;
++
++	            //Bit0-2: supported bandwidth
++	            //Bit3: IEEE802.11v support
++	            //Bit4: 11ac support
++	            //Bit5-6: MUMIMO support
++	            //Bit7: reserved
++			    if(sta_info.bandwidth==40) {
++			    	connect_event->band_width = 0x1; //TODO: bit1 and bit2
++			    }
++			    connect_event->bss_transition_support = 0; //TODO: bit3
++			    if(sta_info.standard==IEEE80211_WLPROTO_11AC) {
++			    	connect_event->vht_capab = 0x1;
++			    }
++			    connect_event->mu_mimo_capab = 0; //TODO: bit5 and bit6
++
++				bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, bsa_conf_info[index].bssid
++						,(uint8_t *)connect_event, sizeof(struct bsa_drv_connect_compl_event_info));
++				free(connect_event);
++			}
++		}
++		fclose(fp);
++		unlink(filename);
++	}
+ 
+-	bsa_printf(BSA_DEBUG, "BSA_PEER: Get interface info for ifname %s",
+-			bsa_conf_info[index].ifname);
+ 
+ 	return retval;
+ }
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-06 22:53:26.186112054 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-06 22:53:26.214111881 +0800
+@@ -12,6 +12,17 @@
+ #define BSA_PROBE_EVENT_REQ		1
+ #define BSA_CONNECT_COMPLETE_EVENT	2
+ 
++#define	IEEE80211_ADDR_LEN	6		/* size of 802.11 address */
++/*
++ * The 802.11 spec says at most 2007 stations may be
++ * associated at once.  For most AP's this is way more
++ * than is feasible so we use a default of 128.  This
++ * number may be overridden by the driver and/or by
++ * user configuration.
++ */
++#define	IEEE80211_AID_MAX		2007
++#define	IEEE80211_AID_DEF		128
++
+ enum interface_status {
+ 	BSA_INTF_STATE_RUNNING	= 1,
+ 	BSA_INTF_STATE_UP	= 2,
+@@ -206,4 +217,21 @@
+ 	uint16_t payload_len;
+ 	uint8_t payload[0];
+ }__attribute__((packed));
++
++struct ieee80211_bsa_sta_info {
++	uint64_t ts_last_rx_pkt;
++	uint64_t ts_last_tx_pkt;
++	uint32_t rx_phy_rate;
++	uint32_t tx_phy_rate;
++	int32_t  rssi_dbm;
++	uint8_t sta_mac[IEEE80211_ADDR_LEN];
++}__attribute__((packed));
++
++struct ieee80211_bsa_sta_stats {
++	uint8_t sta_mac[IEEE80211_ADDR_LEN];
++	uint16_t num_sta;
++	/* STA info provided by driver */
++	struct ieee80211_bsa_sta_info ieee80211_bsa_sta_info_var[IEEE80211_AID_DEF];
++}__attribute__((packed));
++
+ #endif
+\ No newline at end of file
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-06 22:53:26.202111955 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-06 22:53:26.218111857 +0800
+@@ -652,16 +652,16 @@
+ 	case BSA_EVENT_CONNECT_COMPLETE:
+ 		connect_event = (void *)(drv_event);
+ 		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+-		event_buffer->event_id = BSA_EVENT_CONNECT_COMPLETE;
++		event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+ 
+-		event_buffer->payload_len = sizeof(struct bsa_evt_sta_connect_info);
++		event_buffer->payload_len = htole16(sizeof(struct bsa_evt_sta_connect_info));
+ 		connect_info = (void *)&event_buffer->payload;
+ 		memcpy(connect_info->sta_mac, connect_event->sta_mac, ETH_ALEN);
+-		connect_info->rx_ss_info = connect_event->rss;
+-		connect_info->max_phy_rate = connect_event->max_phy_rate;
+-		connect_info->curr_band = connect_event->curr_band;
++		connect_info->rx_ss_info = htole16(connect_event->rss);
++		connect_info->max_phy_rate = htole16(connect_event->max_phy_rate);
++		connect_info->curr_band = htole16(connect_event->curr_band);
+ 		connect_info->channel = connect_event->channel;
+ 		connect_info->sta_capab = connect_event->band_width;
+ 		
+@@ -747,7 +747,8 @@
+ 			}
+ 			break;
+ 		}
+-		msg_len += event_buffer->payload_len;
++		event_buffer->payload_len = pos - event_buffer->payload;
++ 		msg_len += event_buffer->payload_len;
+ 		event_buffer->payload_len = htole16(pos - event_buffer->payload);
+ 		break;
+ 	case BSA_EVENT_DISASSOC:
+@@ -765,30 +766,41 @@
+ 				MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
+ 				sta_disconnect_info->direction, sta_disconnect_info->reason_code);
+ 		break;
+-	case BSA_EVENT_STA_PHY_STATS:
+-#if 0 // TODO
++	case BSA_EVENT_STA_PHY_STATS: {
++		uint32_t tmp_val_endian32;
++		uint64_t tmp_val_endian64;
++
+ 		bsa_dri_sta_stats = (void *)(drv_event);
+ 		msg_len = sizeof (struct bsa_event_info);
+-		event_buffer->event_id = BSA_EVENT_STA_PHY_STATS;
++		event_buffer->event_id = htole16(BSA_EVENT_STA_PHY_STATS);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+ 		bsa_dri_sta_info = bsa_dri_sta_stats->ieee80211_bsa_sta_info_var;
+ 		pos = event_buffer->payload;
+-		
++
+ 		while (cnt < bsa_dri_sta_stats->num_sta) {
+ 			pos += bsa_encap_tlv(pos, TLVTYPE_STA_MAC, bsa_dri_sta_info->sta_mac, ETH_ALEN);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_RX_PHYRATE, &bsa_dri_sta_info->rx_phy_rate, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_RX, &bsa_dri_sta_info->ts_last_rx_pkt, 8);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TX_PHYRATE, &bsa_dri_sta_info->tx_phy_rate, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_TX, &bsa_dri_sta_info->ts_last_tx_pkt, 8);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &bsa_dri_sta_info->rssi_dbm, 4);
++			tmp_val_endian32 = htole32(bsa_dri_sta_info->rx_phy_rate);
++			pos += bsa_encap_tlv(pos, TLVTYPE_RX_PHYRATE, &tmp_val_endian32, 4);
++			tmp_val_endian64 = htole64(bsa_dri_sta_info->ts_last_rx_pkt);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_RX, &tmp_val_endian64, 8);
++			tmp_val_endian32 = htole32(bsa_dri_sta_info->tx_phy_rate);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TX_PHYRATE, &tmp_val_endian32, 4);
++			tmp_val_endian64 = htole64(bsa_dri_sta_info->ts_last_tx_pkt);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_TX, &tmp_val_endian64, 8);
++			tmp_val_endian32 = htole32(bsa_dri_sta_info->rssi_dbm);
++			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &tmp_val_endian32, 4);
+ 			bsa_dri_sta_info++;
+ 			cnt++;
+ 		}
+-#endif
++
+ 		event_buffer->payload_len = pos - event_buffer->payload;
+ 		msg_len += event_buffer->payload_len;
++		event_buffer->payload_len = htole16(event_buffer->payload_len);
++		bsa_printf(BSA_DEBUG, "BSA_PEER: STA PHY STATS event: bssid"MACSTR", count=%d",
++				MAC2STR(event_buffer->bssid), bsa_dri_sta_stats->num_sta);
+ 		break;
++	}
+ 	case BSA_EVENT_STA_NONASSOC_STATS:
+ #if 0 //TODO
+ 		bsa_dri_neighbour_report = (void *)(drv_event);
+@@ -1430,6 +1442,7 @@
+     FILE *fp = NULL;
+ 
+     sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++    printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+     do{
+         sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
+@@ -1465,7 +1478,7 @@
+ 	memset(rate_set, 0, sizeof(rate_set));
+     memset(mcs_set, 0, sizeof(mcs_set));
+     sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-    printf("ifname=%s mac=%s \n", ifname, macAddr);
++    printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
+ 

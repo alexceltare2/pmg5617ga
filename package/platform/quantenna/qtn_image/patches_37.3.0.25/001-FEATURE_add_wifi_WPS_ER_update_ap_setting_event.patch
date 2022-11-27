@@ -1,0 +1,15 @@
+Index: qtn_image-37.3.0.25/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c
+===================================================================
+--- qtn_image-37.3.0.25.orig/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c	2015-02-25 13:40:06.000000000 +0800
++++ qtn_image-37.3.0.25/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c	2015-07-14 16:29:15.801553176 +0800
+@@ -728,7 +728,9 @@
+ 			       ifname);
+ 
+ 	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
+-
++#if 1 //ZYXEL,Mark	
++	hostapd_send_wlan_msg(hapd, "WPS AP configuration updated");
++#endif
+ 	return 0;
+ }
+ 

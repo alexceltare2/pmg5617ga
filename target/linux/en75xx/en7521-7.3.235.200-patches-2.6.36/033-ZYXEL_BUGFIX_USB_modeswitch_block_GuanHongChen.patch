@@ -1,0 +1,24 @@
+Index: linux-2.6.36/drivers/usb/core/mtk/devio.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/core/mtk/devio.c	2017-04-26 03:23:04.979158458 +0800
++++ linux-2.6.36/drivers/usb/core/mtk/devio.c	2017-04-27 16:50:21.314519315 +0800
+@@ -910,6 +910,7 @@
+ {
+ 	unsigned int ep;
+ 	int ret;
++	struct usb_hcd *hcd = NULL;
+ 
+ 	if (get_user(ep, (unsigned int __user *)arg))
+ 		return -EFAULT;
+@@ -946,6 +947,11 @@
+ 	ret = checkintf(ps, ret);
+ 	if (ret)
+ 		return ret;
++
++	hcd = bus_to_hcd(ps->dev->bus);
++	if (hcd->driver->flags & HCD_USB3)
++		return 0;
++
+ 	if (ep & USB_DIR_IN)
+ 		pipe = usb_rcvbulkpipe(ps->dev, ep & 0x7f);
+ 	else

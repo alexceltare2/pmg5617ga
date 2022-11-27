@@ -1,0 +1,23 @@
+Index: linux-2.6.36/net/ipv4/netfilter/nf_nat_core.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/netfilter/nf_nat_core.c	2017-05-23 11:47:39.517244599 +0800
++++ linux-2.6.36/net/ipv4/netfilter/nf_nat_core.c	2017-05-23 18:49:36.109618451 +0800
+@@ -179,9 +179,15 @@
+ 
+ 		ct = nat->ct;
+ 
+-		if(((((unsigned int)nat->bysource.next & 0xf0000000)!= 0x80000000) && (nat->bysource.next != NULL))
+-			||((((unsigned int)nat->bysource.pprev & 0xf0000000) != 0x80000000) && (nat->bysource.pprev != NULL))
+-			||(((unsigned int)ct & 0xf0000000) != 0x80000000)){
++/*
++This code is used to debug the crash problem of 2.6.36 kernel.
++The judgment of highest position of address  is 0x80000000.
++When onu uses 512M memory, the highest position of address  is 0x90000000.
++These logs will always be printed so that the onu will calltrace.
++*/
++		if(((((unsigned int)nat->bysource.next & 0xf0000000)!= 0x80000000) && (((unsigned int)nat->bysource.next & 0xf0000000)!= 0x90000000) && (nat->bysource.next != NULL))
++			||((((unsigned int)nat->bysource.pprev & 0xf0000000) != 0x80000000) && (((unsigned int)nat->bysource.pprev & 0xf0000000) != 0x90000000) && (nat->bysource.pprev != NULL))
++			||((((unsigned int)ct & 0xf0000000) != 0x80000000) && (((unsigned int)ct & 0xf0000000) != 0x90000000))){
+ 				printk("\r\nDBG:: CT = NULL  h = %d",h);
+ 				printk("\r\nDBG::  null_ct_cnt = %d\r\n",rcu_cnt);
+ 					if(nat){

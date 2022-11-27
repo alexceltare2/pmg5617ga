@@ -1,0 +1,56 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-05-12 17:25:52.266942999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-05-12 17:28:17.451179176 +0800
+@@ -1161,7 +1161,11 @@
+ {
+ #ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
++#if _USE_IEEE80211_H_
+ 	struct ieee80211_bsa_mac_filter     *bsa_mac_filter = (void *)cmd_info;
++#else
++	struct bsa_peer_entity              *bsa_mac_filter = (void *)cmd_info;
++#endif
+ 	char                                cmd;
+ 
+ 	if (index < 0 || index >= BSA_PEER_MAX_INTF_COUNT) {
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-05-12 17:25:52.258942999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-05-12 17:28:34.468822982 +0800
+@@ -1,13 +1,33 @@
+ #ifndef __BSA_DRIVER_BRCM_H__
+ #define __BSA_DRIVER_BRCM_H__
+ 
+-#define _USE_IEEE80211_H_   1
++#define _USE_IEEE80211_H_   0
+ 
+ #if _USE_IEEE80211_H_ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #include "net80211/ieee80211_ioctl.h"
++#else
++// copy from build_dir\target-mips_uClibc-0.9.32\libqcsapi_client_37.4.0.97\net80211\ieee80211.h
++/*
++ * Rx MCS set
++ * # Supported rates IE is a 10 octet bitmap - also see mcs_stream_map[]
++ * Octet: 0        1        2        3        4 UEQM1  5 UEQM2  6 UEQM3  7 UEQM4  8 UEQM5  9 UEQM6
++ * NSS:   11111111 22222222 33333333 44444444 02222223 33333333 33333444 44444444 44444444 44444...
++ * MCS:   0        8        16       24       32       40       48       56       64       72  76
++ */
++enum {
++	IEEE80211_HT_MCSSET_20_40_NSS1,		/* CBW = 20/40 MHz, Nss = 1, Nes = 1, EQM/ No EQM */
++	IEEE80211_HT_MCSSET_20_40_NSS2,		/* CBW = 20/40 MHz, Nss = 2, Nes = 1, EQM */
++	IEEE80211_HT_MCSSET_20_40_NSS3,		/* CBW = 20/40 MHz, Nss = 3, Nes = 1, EQM */
++	IEEE80211_HT_MCSSET_20_40_NSS4,		/* CBW = 20/40 MHz, Nss = 4, Nes = 1, EQM */
++	IEEE80211_HT_MCSSET_20_40_UEQM1,	/* MCS 32 and UEQM MCSs 33 - 39 */
++	IEEE80211_HT_MCSSET_20_40_UEQM2,	/* UEQM MCSs 40 - 47 */
++	IEEE80211_HT_MCSSET_20_40_UEQM3,        /* UEQM MCSs 48 - 55 */
++	IEEE80211_HT_MCSSET_20_40_UEQM4,        /* UEQM MCSs 56 - 63 */
++	IEEE80211_HT_MCSSET_20_40_UEQM5,        /* UEQM MCSs 64 - 71 */
++	IEEE80211_HT_MCSSET_20_40_UEQM6,        /* UEQM MCSs 72 - 76 plus 3 reserved bits */
++};
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+-
+ /* from bcmdrivers/broadcom/net/wl/impl24/main/src/common/include/proto/802.11.h */
+ #define	DOT11_MGMT_HDR_LEN	24		/* d11 management header length */
+ 

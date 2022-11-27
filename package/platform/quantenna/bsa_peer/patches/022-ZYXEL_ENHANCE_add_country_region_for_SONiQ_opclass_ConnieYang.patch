@@ -1,0 +1,22 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-05-15 17:04:42.880098996 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-05-15 17:56:30.604182771 +0800
+@@ -200,7 +200,7 @@
+ 	bsa_printf(BSA_DEBUG, "BSA_PEER:[%s] region %s, band %d, CurBandwidth %d, channel %d, sideband %d\n",
+ 		__FUNCTION__, region, band, CurBandwidth, channel, sideband);
+ 
+-	if( (!strcmp(region, "US")) || (!strcmp(region, "Q2"))) {
++	if( (!strcmp(region, "US")) || (!strcmp(region, "Q2")) || (!strcmp(region, "Q1")) ) {
+ 		for(i=0; i<(sizeof(opclass_table_US)/sizeof(opclass_t)); i++) {
+ 			if((opclass_table_US[i].band == band) && (opclass_table_US[i].CurBandwidth == CurBandwidth) &&
+ 				(opclass_table_US[i].sideband == sideband)) {
+@@ -213,7 +213,7 @@
+ 			}
+ 		}
+ 	}
+-	else if( (!strcmp(region, "EU")) || (!strcmp(region, "E0"))) {
++	else if( (!strcmp(region, "EU")) || (!strcmp(region, "E0")) || (!strcmp(region, "IT")) || (!strcmp(region, "AE")) ) {
+ 		for(i=0; i<(sizeof(opclass_table_EU)/sizeof(opclass_t)); i++) {
+ 			if((opclass_table_EU[i].band == band) && (opclass_table_EU[i].CurBandwidth == CurBandwidth) &&
+ 				(opclass_table_EU[i].sideband == sideband)) {

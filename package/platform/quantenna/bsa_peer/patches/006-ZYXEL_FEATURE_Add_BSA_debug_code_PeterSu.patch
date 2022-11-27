@@ -1,0 +1,136 @@
+Index: bsa-1.0.1/common/bsa_debug.c
+===================================================================
+--- bsa-1.0.1.orig/common/bsa_debug.c	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/common/bsa_debug.c	2017-04-10 00:08:19.017572626 +0800
+@@ -45,6 +45,19 @@
+ #include "bsa_includes.h"
+ 
+ int bsa_debug_level;
++void zybsa_printf(int level, const char *fmt, ...)
++{
++	va_list ap;
++
++	if (level < bsa_debug_level)
++		return;
++
++	va_start(ap, fmt);
++	vfprintf(stdout, fmt, ap);
++	va_end(ap);
++	return;
++}
++
+ void bsa_printf(int level, const char *fmt, ...)
+ {
+ 	FILE *log_file;
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-10 00:08:18.997572725 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-10 00:11:28.268622259 +0800
+@@ -1255,7 +1255,7 @@
+ 	FILE *fp = NULL;
+ 
+ 	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++	zybsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	do {
+ 		sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
+@@ -1295,7 +1295,7 @@
+ 	memset(rate_set, 0, sizeof(rate_set));
+ 	memset(mcs_set, 0, sizeof(mcs_set));
+ 	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++	zybsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
+ 
+@@ -1470,21 +1470,20 @@
+ 	struct zy_sta_info_t sta_info;
+ 	uint32_t cnt = 0;
+ 
+-	if (!tx_buff) {
+-		return -ENOMEM;
+-	}
+ 	if (!netlink || (netlink->write_sock == 0)){
+ 		return -EINVAL;
+ 	}
+ 	memset(&sta_info, 0, sizeof(sta_info));
+ 	tx_buff = malloc(BSA_MAX_EVENT_LEN);
++	if (!tx_buff) {
++		return -ENOMEM;
++	}
+ 	event_buffer = (void *)tx_buff;
+ 
+ 	switch (event_id) {
+ 		case BSA_EVENT_PROBE_REQ:
+-#if 0 //Peter
+-			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-#endif
++			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
++
+ 			//probe_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+ 			event_buffer->event_id = htole16(BSA_EVENT_PROBE_REQ);
+@@ -1516,9 +1515,8 @@
+ 				preq_info->sta_capab |= BIT(4);
+ 			break;
+ 		case BSA_EVENT_CONNECT_COMPLETE:
+-#if 0 //Peter
+-			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-#endif
++			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
++
+ 			//connect_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+ 			event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+@@ -1559,9 +1557,8 @@
+ 					connect_info->channel, connect_info->curr_band);*/
+ 			break;
+ 		case BSA_EVENT_DISASSOC:
+-#if 0 //Peter
+-			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-#endif
++			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
++
+ 			//sta_disconnect_event = (void *)(drv_event);
+ 			msg_len = STA_DISCONNECT_INFO_LEN;
+ 			event_buffer->event_id = htole16(BSA_EVENT_DISASSOC);
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-10 00:08:18.909573162 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-10 00:08:19.017572626 +0800
+@@ -59,13 +59,21 @@
+ {
+ 	FILE *fd = NULL;
+ 	int retval = 0;
+-	char buff[BUFF_SIZE];
++	char buff[BUFF_SIZE], tmpbuf[32];
+ 	char *tempVal = NULL, *store_val= NULL;
+ 	int i = 0, sockid = -1, len = 0;
+ 	struct ifreq ifr;
+ 	int debug_level = 0;
+ 
++#if 1 //Peter
++	if (access(BSA_CONF_FILE_RUNTIME_PATH, F_OK) == -1) {
++		sprintf(tmpbuf, "cp %s %s", BSA_CONF_FILE_PATH, BSA_CONF_FILE_RUNTIME_PATH);
++		system(tmpbuf);
++	}
++	fd = fopen(BSA_CONF_FILE_RUNTIME_PATH, "r");
++#else
+ 	fd = fopen(BSA_CONF_FILE_PATH, "r");
++#endif
+ 
+ 	if (!fd) {
+ 		return -errno;
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.h	2017-04-10 00:08:18.909573162 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.h	2017-04-10 00:08:19.017572626 +0800
+@@ -55,6 +55,7 @@
+ #define BSA_PEER_DEBUG_LEVEL	"bsa_debug_level"
+ #define BSA_PEER_MAX_INTF_COUNT	8
+ #define BSA_CONF_FILE_PATH	"/etc/bsa_conf.txt"
++#define BSA_CONF_FILE_RUNTIME_PATH	"/tmp/bsa_conf.txt"
+ #define BUFF_SIZE		100
+ 
+ struct bsa_peer_bssid_list {

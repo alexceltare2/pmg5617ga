@@ -1,0 +1,54 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-21 16:46:27.559704765 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-24 09:42:25.487440636 +0800
+@@ -153,6 +153,8 @@
+ 	json_object *intf_info_Jobj = NULL;
+ 	json_object *htcap_Jobj = NULL;
+ 	json_object *htop_Jobj = NULL;
++	json_object *vhtcap_Jobj = NULL;
++	json_object *vhtop_Jobj = NULL;
+ 	struct bsa_drv_gen_intf_info *drv_event_gen_info = NULL;
+ 	struct bsa_drv_intf_fat_info *drv_event_fat_info = NULL;
+ 	int i = 0;
+@@ -234,6 +236,40 @@
+ 				}
+ 			}
+ 
++			/** 802.11ac VHT Capabilities element **/
++			vhtcap_Jobj = json_object_object_get(intf_info_Jobj, "vhtcap");
++			if(vhtcap_Jobj) {
++				drv_event_gen_info->vhtcap.vht_id = json_object_get_int(json_object_object_get(vhtcap_Jobj, "vht_id"));
++				drv_event_gen_info->vhtcap.vht_len = json_object_get_int(json_object_object_get(vhtcap_Jobj, "vht_len"));
++				for(i=0; i<sizeof(drv_event_gen_info->vhtcap.vht_cap); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "vht_cap_%d", i);
++					drv_event_gen_info->vhtcap.vht_cap[i] = json_object_get_int(json_object_object_get(vhtcap_Jobj, buf));
++				}
++				for(i=0; i<sizeof(drv_event_gen_info->vhtcap.vht_mcs_nss_set); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "vht_mcs_nss_set_%d", i);
++					drv_event_gen_info->vhtcap.vht_mcs_nss_set[i] = json_object_get_int(json_object_object_get(vhtcap_Jobj, buf));
++				}
++			}
++
++			/** 802.11ac VHT Operation element **/
++			vhtop_Jobj = json_object_object_get(intf_info_Jobj, "vhtop");
++			if(vhtop_Jobj) {
++				drv_event_gen_info->vhtop.vhtop_id = json_object_get_int(json_object_object_get(vhtop_Jobj, "vhtop_id"));
++				drv_event_gen_info->vhtop.vhtop_len = json_object_get_int(json_object_object_get(vhtop_Jobj, "vhtop_len"));
++				for(i=0; i<sizeof(drv_event_gen_info->vhtop.vhtop_info); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "vhtop_info_%d", i);
++					drv_event_gen_info->vhtop.vhtop_info[i] = json_object_get_int(json_object_object_get(vhtop_Jobj, buf));
++				}
++				for(i=0; i<sizeof(drv_event_gen_info->vhtop.vhtop_bvhtmcs); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "vhtop_bvhtmcs_%d", i);
++					drv_event_gen_info->vhtop.vhtop_bvhtmcs[i] = json_object_get_int(json_object_object_get(vhtop_Jobj, buf));
++				}
++			}
++
+ 			drv_event_info->cmd_spec = sub_cmd;
+ 
+ 			json_object_put(intf_info_Jobj);

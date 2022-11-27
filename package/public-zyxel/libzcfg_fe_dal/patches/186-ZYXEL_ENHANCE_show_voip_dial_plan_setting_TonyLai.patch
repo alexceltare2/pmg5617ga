@@ -1,0 +1,40 @@
+Index: libzcfg_fe_dal-1.0/voip/sip/zcfg_fe_dal_sip_provider.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/voip/sip/zcfg_fe_dal_sip_provider.c	2018-04-17 15:39:56.615456418 +0800
++++ libzcfg_fe_dal-1.0/voip/sip/zcfg_fe_dal_sip_provider.c	2018-04-18 16:23:10.545057897 +0800
+@@ -190,7 +190,7 @@
+ 	X_ZYXEL_BoundIfList = json_object_get_string(json_object_object_get(Jobj, "X_ZYXEL_BoundIfList"));
+ 	DTMFMethodG711 = json_object_get_string(json_object_object_get(Jobj, "DTMFMethodG711"));
+ 	DTMFMethod = json_object_get_string(json_object_object_get(Jobj, "DTMFMethod"));
+-	if(SHOW_NOT_USE_OFTEN_VOIP_SETTING&flag1){
++	if(SHOW_VOIP_DIAL_PLAN_SETTING&flag1){
+ 		DigitMapEnable = json_object_get_boolean(json_object_object_get(Jobj, "DigitMapEnable"));
+ 		DigitMap = json_object_get_string(json_object_object_get(Jobj, "DigitMap"));
+ 	}
+@@ -389,7 +389,7 @@
+ 		json_object_object_add(profObj, "X_ZYXEL_BoundIfList", json_object_new_string(X_ZYXEL_BoundIfList));
+ 		json_object_object_add(profObj, "DTMFMethodG711", json_object_new_string(DTMFMethodG711));
+ 		json_object_object_add(profObj, "DTMFMethod", json_object_new_string(DTMFMethod));
+-		if(SHOW_NOT_USE_OFTEN_VOIP_SETTING&flag1){
++		if(SHOW_VOIP_DIAL_PLAN_SETTING&flag1){
+ 			json_object_object_add(profObj, "DigitMapEnable", json_object_new_boolean(DigitMapEnable));
+ 			json_object_object_add(profObj, "DigitMap", json_object_new_string(DigitMap));
+ 		}
+@@ -783,7 +783,7 @@
+ 	X_ZYXEL_BoundIfList = json_object_get_string(json_object_object_get(profObj, "X_ZYXEL_BoundIfList"));
+ 	DTMFMethodG711 = json_object_get_string(json_object_object_get(profObj, "DTMFMethodG711"));
+ 	DTMFMethod = json_object_get_string(json_object_object_get(profObj, "DTMFMethod"));
+-	if(SHOW_NOT_USE_OFTEN_VOIP_SETTING&flag1){
++	if(SHOW_VOIP_DIAL_PLAN_SETTING&flag1){
+ 		DigitMapEnable = json_object_get_boolean(json_object_object_get(profObj, "DigitMapEnable"));
+ 		DigitMap = json_object_get_string(json_object_object_get(profObj, "DigitMap"));
+ 	}
+@@ -799,7 +799,7 @@
+ 	json_object_object_add(paserobj, "X_ZYXEL_BoundIfList", json_object_new_string(X_ZYXEL_BoundIfList));
+ 	json_object_object_add(paserobj, "DTMFMethodG711", json_object_new_string(DTMFMethodG711));
+ 	json_object_object_add(paserobj, "DTMFMethod", json_object_new_string(DTMFMethod));
+-	if(SHOW_NOT_USE_OFTEN_VOIP_SETTING&flag1){
++	if(SHOW_VOIP_DIAL_PLAN_SETTING&flag1){
+ 		json_object_object_add(paserobj, "DigitMapEnable", json_object_new_boolean(DigitMapEnable));
+ 		json_object_object_add(paserobj, "DigitMap", json_object_new_string(DigitMap));
+ 	}

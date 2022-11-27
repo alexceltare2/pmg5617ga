@@ -1,0 +1,24 @@
+Index: qsteer-v0.10.3/csm/csm_helper.c
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csm_helper.c	2017-04-10 11:25:29.077630503 +0800
++++ qsteer-v0.10.3/csm/csm_helper.c	2017-04-10 13:17:32.305477084 +0800
+@@ -676,7 +676,7 @@
+ 		    csm_get_msg_body(msg);
+ 		cmd_m->ifname_size = strlen(bss->ifname);
+ 		strcpy(cmd_m->ifname, bss->ifname);
+-		cmd_m->fat_period = period;
++		cmd_m->fat_period = le_to_host32(period);
+ 		csm_push_cmd_bss(bss->drv, bss, msg);
+ 	}
+ }
+@@ -698,8 +698,8 @@
+ 		    csm_get_msg_body(msg);
+ 		cmd_m->ifname_size = strlen(bss->ifname);
+ 		strcpy(cmd_m->ifname, bss->ifname);
+-		cmd_m->peroid = period;
+-		cmd_m->duty_cycle = duty_cycle;
++		cmd_m->peroid = le_to_host32(period);
++		cmd_m->duty_cycle = le_to_host32(duty_cycle);
+ 		csm_push_cmd_bss(bss->drv, bss, msg);
+ 	}
+ }

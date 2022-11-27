@@ -1,0 +1,22 @@
+Index: libzyutil-1.0/ECONET/libzyutil_wrapper.c
+===================================================================
+--- libzyutil-1.0.orig/ECONET/libzyutil_wrapper.c	2017-07-31 09:17:21.703598396 +0800
++++ libzyutil-1.0/ECONET/libzyutil_wrapper.c	2017-07-31 15:28:57.080026075 +0800
+@@ -431,8 +431,15 @@
+ 	fclose(fptr);
+ 	unlink(BOOTIMG_HEADER_FILE);
+ 
+-	strcpy(fwversion, local_booting_header.swVersionInt);
+-	
++	if ( !strncmp(local_booting_header.swVersionInt, "V5.", 3) )
++	{
++		strcpy(fwversion, local_booting_header.swVersionInt);
++	}
++	else
++	{
++		sprintf(fwversion, " ");
++	}
++
+ 	return ZCFG_SUCCESS;
+ }
+ 

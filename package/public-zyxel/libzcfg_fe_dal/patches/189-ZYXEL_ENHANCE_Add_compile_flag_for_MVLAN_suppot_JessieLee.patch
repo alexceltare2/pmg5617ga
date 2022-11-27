@@ -1,0 +1,45 @@
+Index: libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/network/broadband/zcfg_fe_dal_broadband.c	2018-07-25 00:33:28.506402945 -0700
++++ libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c	2018-07-25 00:37:59.738408148 -0700
+@@ -36,7 +36,9 @@
+ 	//VLAN term
+ 	{"VLANEnable",			dalType_boolean,	0,	0,	NULL},
+ 	{"VLANID",				dalType_int,		-1,	4094,	NULL},
++#if defined(ZYXEL_SUPPORT_MVLAN)
+ 	{"MVLANID",                             dalType_int,            -1,     4094,   NULL},
++#endif
+ 	{"VLANPriority",		dalType_int,		-1,	7,	NULL},
+ 	//ppp Iface
+ 	{"pppUsername",			dalType_string,	0,	0,	NULL},
+@@ -377,7 +379,9 @@
+ 
+ 	if(json_object_get_boolean(json_object_object_get(Jobj, "VLANEnable")) == false){
+ 		json_object_object_add(Jobj, "VLANID", json_object_new_int(-1));
++#if defined(ZYXEL_SUPPORT_MVLAN)
+ 		json_object_object_add(Jobj, "MVLANID", json_object_new_int(-1));
++#endif
+ 		json_object_object_add(Jobj, "VLANPriority", json_object_new_int(-1));
+ 	}
+ 	
+@@ -762,7 +766,9 @@
+ 
+ 	replaceParam(vlanTermObj, "X_ZYXEL_VLANEnable", Jobj, "VLANEnable");
+ 	replaceParam(vlanTermObj, "VLANID", Jobj, "VLANID");
++#if defined(ZYXEL_SUPPORT_MVLAN)
+ 	replaceParam(vlanTermObj, "MVLANID", Jobj, "MVLANID");
++#endif
+ 	replaceParam(vlanTermObj, "X_ZYXEL_VLANPriority", Jobj, "VLANPriority");
+ 	
+ 	sprintf(currLowerLayers, "Ethernet.VLANTermination.%u", vlanTermIid.idx[0]);
+@@ -3473,7 +3479,9 @@
+ 	json_object_object_add(pramJobj, "Type", json_object_new_string(CurrType));
+ 	json_object_object_add(pramJobj, "Mode", json_object_new_string(CurrMode));
+ 	json_object_object_add(pramJobj, "VLANID", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "VLANID")));
+-	json_object_object_add(pramJobj, "VLANID", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "MVLANID")));
++#if defined(ZYXEL_SUPPORT_MVLAN)
++	json_object_object_add(pramJobj, "MVLANID", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "MVLANID")));
++#endif
+ 	json_object_object_add(pramJobj, "VLANEnable", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "X_ZYXEL_VLANEnable")));
+ 	json_object_object_add(pramJobj, "VLANPriority", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "X_ZYXEL_VLANPriority")));
+ 	json_object_object_add(pramJobj, "Iid", json_object_new_int(ipIfaceIid.idx[0]));

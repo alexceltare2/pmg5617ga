@@ -1,0 +1,73 @@
+Index: linux-2.6.36/include/net/netfilter/nf_nat.h
+===================================================================
+--- linux-2.6.36.orig/include/net/netfilter/nf_nat.h	2017-04-27 16:33:57.138677318 +0800
++++ linux-2.6.36/include/net/netfilter/nf_nat.h	2017-04-27 16:38:04.246169318 +0800
+@@ -39,6 +39,14 @@
+ 
+ 	/* Inclusive: network order */
+ 	union nf_conntrack_man_proto min, max;
++
++#if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120307. */
++	/* mappingFlag is 1, if it needs to do one-to-one port mapping. */
++	unsigned int mappingFlag;
++
++	/* Record external port information. */
++	union nf_conntrack_man_proto mappingMin, mappingMax;
++#endif
+ };
+ 
+ /* For backwards compat: don't use in modern code. */
+Index: linux-2.6.36/net/ipv4/netfilter/nf_nat_core.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/netfilter/nf_nat_core.c	2017-04-26 03:23:04.911158458 +0800
++++ linux-2.6.36/net/ipv4/netfilter/nf_nat_core.c	2017-04-27 16:38:04.262177319 +0800
+@@ -299,7 +299,14 @@
+ 	/* Only bother mapping if it's not already in range and unique */
+ 	if (!(range->flags & IP_NAT_RANGE_PROTO_RANDOM) &&
+ 	    (!(range->flags & IP_NAT_RANGE_PROTO_SPECIFIED) ||
++#if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120308. */
++	     /* If external port range is 1000-2000, and internal port range is 1500-2500. */
++	     /* In this case, in_range() will return trun when the incoming traffic uses port 1555. */
++	     /* Therefore, only check in_range() when mappingFlag is false. */
++	     (!range->mappingFlag && proto->in_range(tuple, maniptype, &range->min, &range->max))) &&
++#else
+ 	     proto->in_range(tuple, maniptype, &range->min, &range->max)) &&
++#endif
+ 	    !nf_nat_used_tuple(tuple, ct))
+ 		goto out;
+ 
+Index: linux-2.6.36/net/ipv4/netfilter/nf_nat_proto_common.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/netfilter/nf_nat_proto_common.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/net/ipv4/netfilter/nf_nat_proto_common.c	2017-04-27 16:38:04.270181319 +0800
+@@ -43,6 +43,9 @@
+ 	unsigned int range_size, min, i;
+ 	__be16 *portptr;
+ 	u_int16_t off;
++#if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120308. */
++	u_int16_t mappingOffset = 0;
++#endif
+ 
+ 	if (maniptype == IP_NAT_MANIP_SRC)
+ 		portptr = &tuple->src.u.all;
+@@ -81,7 +84,20 @@
+ 	else
+ 		off = *rover;
+ 
++#if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120308. */
++	mappingOffset = tuple->dst.u.all - range->mappingMin.all;
++	for (i = 0; ; ++off, mappingOffset++) {
++#else
+ 	for (i = 0; ; ++off) {
++#endif
++#if 1 /* Support one-to-one port mapping. __TELEFONICA__, ZyXEL Stan Su, 20120308. */
++		/* if range->flags & IP_NAT_RANGE_PROTO_RANDOM is true, portprt should be counted by off. */
++		if (range->mappingFlag == 1 && !(range->flags & NF_NAT_RANGE_PROTO_RANDOM))
++		{
++			*portptr = htons(min + mappingOffset % range_size);
++		}
++		else
++#endif
+ 		*portptr = htons(min + off % range_size);
+ 		if (++i != range_size && nf_nat_used_tuple(tuple, ct))
+ 			continue;

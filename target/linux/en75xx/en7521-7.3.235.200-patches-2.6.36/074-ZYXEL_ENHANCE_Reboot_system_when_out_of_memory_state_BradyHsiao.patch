@@ -1,0 +1,13 @@
+Index: linux-2.6.36/mm/oom_kill.c
+===================================================================
+--- linux-2.6.36.orig/mm/oom_kill.c	2018-08-22 17:30:42.414093118 +0800
++++ linux-2.6.36/mm/oom_kill.c	2018-08-22 17:36:01.926102106 +0800
+@@ -32,7 +32,7 @@
+ #include <linux/mempolicy.h>
+ #include <linux/security.h>
+ 
+-int sysctl_panic_on_oom;
++int sysctl_panic_on_oom = 1;
+ int sysctl_oom_kill_allocating_task;
+ int sysctl_oom_dump_tasks = 1;
+ #if defined(TCSUPPORT_MEMORY_CONTROL) || defined(TCSUPPORT_CT)

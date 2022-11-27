@@ -1,0 +1,113 @@
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/S53zyxel_network
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/S53zyxel_network	2017-01-24 10:37:28.177628463 +0800
+@@ -0,0 +1,45 @@
++#!/bin/sh
++#
++# Config RPC interface IP to 1.1.1.2
++#
++
++do_staticip=`get_wifi_config wifi0 staticip`
++
++start() {
++	if [ $do_staticip == "1" ]; then
++		ifconfig br0 0.0.0.0
++	fi
++	ifconfig br0:qtn 1.1.1.2 netmask 255.255.255.252
++	
++	mkdir -p /tmp/power_tables/default
++	cp -rf /etc/power_tables_default/*.conf /tmp/power_tables
++	
++	for f in /etc/power_tables_default/tx_power_*.txt ;
++	do
++		cp -f $f /tmp/power_tables/default
++        f1=${f##*/}
++		ln -sf ./default/$f1 /tmp/power_tables/$f1
++	done
++}
++
++stop() {
++	ifconfig br0:qtn down
++}
++
++case "$1" in
++        start)
++                start
++                ;;
++        stop)
++                stop
++                ;;
++        restart|reload)
++				stop
++                start
++                ;;
++        *)
++                echo $"Usage: $0 {start|stop|restart}"
++                exit 1
++esac
++
++exit $?
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network	2017-01-24 10:37:28.157628462 +0800
++++ /dev/null	1970-01-01 00:00:00.000000000 +0000
+@@ -1,45 +0,0 @@
+-#!/bin/sh
+-#
+-# Config RPC interface IP to 1.1.1.2
+-#
+-
+-do_staticip=`get_wifi_config wifi0 staticip`
+-
+-start() {
+-	if [ $do_staticip == "1" ]; then
+-		ifconfig br0 0.0.0.0
+-	fi
+-	ifconfig br0:qtn 1.1.1.2 netmask 255.255.255.252
+-	
+-	mkdir -p /tmp/power_tables/default
+-	cp -rf /etc/power_tables_default/*.conf /tmp/power_tables
+-	
+-	for f in /etc/power_tables_default/tx_power_*.txt ;
+-	do
+-		cp -f $f /tmp/power_tables/default
+-        f1=${f##*/}
+-		ln -sf ./default/$f1 /tmp/power_tables/$f1
+-	done
+-}
+-
+-stop() {
+-	ifconfig br0:qtn down
+-}
+-
+-case "$1" in
+-        start)
+-                start
+-                ;;
+-        stop)
+-                stop
+-                ;;
+-        restart|reload)
+-				stop
+-                start
+-                ;;
+-        *)
+-                echo $"Usage: $0 {start|stop|restart}"
+-                exit 1
+-esac
+-
+-exit $?
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/ruby.mk
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/ruby.mk	2017-01-24 10:37:28.157628462 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/ruby.mk	2017-01-24 10:37:28.185628463 +0800
+@@ -132,7 +132,7 @@
+ 	S10coredump	\
+ 	S09qproc_mon
+ 
+-ruby-initd-files-$(BR2_ZYXEL_PATCH) += S93zyxel_network
++ruby-initd-files-$(BR2_ZYXEL_PATCH) += S53zyxel_network
+ ruby-initd-files-$(BR2_PACKAGE_BOA)	+= S42boa
+ 
+ .PHONY: FORCE

@@ -1,0 +1,24 @@
+Index: libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/network/broadband/zcfg_fe_dal_broadband.c	2018-07-23 23:37:11.118453221 -0700
++++ libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c	2018-07-23 23:42:17.458459098 -0700
+@@ -1708,13 +1708,19 @@
+ 
+ 	pramJobj = json_object_object_get(Jobj, "IGMPEnable");
+ 	if(pramJobj)
++	{
+ 		igmpEnable = json_object_get_boolean(pramJobj);
++		json_object_object_add(igmpObj, "Enable", json_object_new_boolean(igmpEnable));
++	}
+ 	else
+ 		igmpEnable = CurrIgmpEnable;
+ 
+ 	pramJobj = json_object_object_get(Jobj, "MLDEnable");
+ 	if(pramJobj)
++	{
+ 		mldEnable = json_object_get_boolean(pramJobj);
++		json_object_object_add(mldObj, "Enable", json_object_new_boolean(mldEnable));
++	}
+ 	else
+ 		mldEnable = CurrMldEnable;
+ 	

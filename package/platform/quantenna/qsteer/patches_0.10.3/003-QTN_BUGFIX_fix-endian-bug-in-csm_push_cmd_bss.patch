@@ -1,0 +1,24 @@
+Index: qsteer-v0.10.3/csm/csm_helper.c
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csm_helper.c	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/csm_helper.c	2017-04-05 11:30:12.951365754 +0800
+@@ -219,14 +219,16 @@
+ 	drvctx_t *drv;
+ 	csm_cmd_handler *handler;
+ 	csmmsgh_t *h = csm_get_msg_body(action);
+-	handler = csm_get_cmd_handler(h->id);
++	uint16_t id = le_to_host16(h->id);
++
++	handler = csm_get_cmd_handler(id);
+ 	if (unlikely(handler == NULL)) {
+-		CSM_DEBUG(PPREFIX "unknown command id = %d", h->id);
++		CSM_DEBUG(PPREFIX "unknown command id = %d", id);
+ 		goto bail;
+ 	}
+ 
+ 	csm = GET_CSMCTX(ctx);
+-	CSM_DEBUG(PPREFIX "command=%d[%s] to bss %" MACFMT "=%p", h->id,
++	CSM_DEBUG(PPREFIX "command=%d[%s] to bss %" MACFMT "=%p", id,
+ 		  handler->name, MACARG(h->bssid), bss);
+ 
+ 	drv = (drvctx_t *) bss->drv;

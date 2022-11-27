@@ -1,0 +1,37 @@
+Index: qtn_image/source/Makefile
+===================================================================
+--- qtn_image.orig/source/Makefile	2016-10-22 09:00:52.000000000 +0800
++++ qtn_image/source/Makefile	2016-11-11 17:11:29.400508919 +0800
+@@ -60,7 +60,7 @@
+ endif
+ 
+ sigma_testbed_support_enabled ?= 0
+-tkip_support_enabled ?= $(sigma_testbed_support_enabled)
++tkip_support_enabled ?= 1
+ flash_env_size ?= 24
+ support_umm ?= 0
+ support_256MB_DDR ?= 0
+Index: qtn_image/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config
+===================================================================
+--- qtn_image.orig/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config	2016-10-22 09:00:35.000000000 +0800
++++ qtn_image/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config	2016-11-11 16:34:47.872559156 +0800
+@@ -475,5 +475,5 @@
+ # Ignore configuration errors
+ CONFIG_WPA_IGNORE_CONFIG_ERRORS=y
+ # support TKIP in AP mode
+-#WPA_TKIP_SUPPORT=y
++WPA_TKIP_SUPPORT=y
+ 
+Index: qtn_image/source/buildroot/package/zhostapd/zhostapd.config
+===================================================================
+--- qtn_image.orig/source/buildroot/package/zhostapd/zhostapd.config	2016-10-22 09:00:36.000000000 +0800
++++ qtn_image/source/buildroot/package/zhostapd/zhostapd.config	2016-11-11 16:33:53.080560407 +0800
+@@ -160,7 +160,7 @@
+ # Ignore configuration errors
+ CONFIG_WPA_IGNORE_CONFIG_ERRORS=y
+ # support TKIP in AP mode
+-#WPA_TKIP_SUPPORT=y
++WPA_TKIP_SUPPORT=y
+ 
+ # ieee80211r support
+ CONFIG_IEEE80211R=y

@@ -1,0 +1,16 @@
+Index: pure-ftpd-1.0.30/src/ftpd.c
+===================================================================
+--- pure-ftpd-1.0.30.orig/src/ftpd.c	2017-06-08 17:17:27.606842500 +0800
++++ pure-ftpd-1.0.30/src/ftpd.c	2017-06-08 17:26:23.452770804 +0800
+@@ -4198,9 +4198,9 @@
+     }
+     free_memory_size = free_memory_size - readnb;
+ #ifndef SMALL_RAM
+-    if(free_memory_size < (2*1024*1024)){
++    if(free_memory_size < (15*1024*1024)){
+         free_memory_size = get_free_memory();
+-        if(free_memory_size < (5*1024*1024)){
++        if(free_memory_size < (12*1024*1024)){
+             return -5;
+         }
+     }

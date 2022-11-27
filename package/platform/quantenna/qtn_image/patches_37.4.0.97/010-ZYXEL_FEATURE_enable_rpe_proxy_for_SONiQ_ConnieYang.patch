@@ -1,0 +1,12 @@
+Index: qtn_image/quantenna-sdk-v37.4.0.97/buildroot/package/bsa/start_bsa
+===================================================================
+--- qtn_image.orig/quantenna-sdk-v37.4.0.97/buildroot/package/bsa/start_bsa	2017-01-13 16:14:19.000000000 +0800
++++ qtn_image/quantenna-sdk-v37.4.0.97/buildroot/package/bsa/start_bsa	2017-01-25 09:59:43.171161649 +0800
+@@ -14,6 +14,7 @@
+ 	check_default_bsad_config_file
+ 	echo "Starting bsa_peer daemon..."
+ 	bsa_peer ${security_file_path}/bsa_conf.txt
++	rpecat &
+ }
+ 
+ stop()

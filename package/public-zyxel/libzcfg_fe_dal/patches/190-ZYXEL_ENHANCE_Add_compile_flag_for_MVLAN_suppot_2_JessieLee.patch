@@ -1,0 +1,16 @@
+Index: libzcfg_fe_dal-1.0/Makefile
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/Makefile	2018-07-25 01:13:43.734449275 -0700
++++ libzcfg_fe_dal-1.0/Makefile	2018-07-25 01:19:40.698456123 -0700
+@@ -138,6 +138,11 @@
+ CFLAGS += -DCONFIG_PPTP_SUPPORT
+ endif
+ 
++#Support MVLAN
++ifeq ($(CONFIG_ZYXEL_SUPPORT_MVLAN),y)
++CFLAGS += -DZYXEL_SUPPORT_MVLAN
++endif
++
+ LDFLAGS += $(LIB_PATH) $(LINK_LIB)
+ CFLAGS += $(INC_PATH) -std=gnu99
+ 

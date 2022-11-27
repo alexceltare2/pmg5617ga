@@ -1,0 +1,133 @@
+Index: linux-2.6.36/fs/ext3/super.c
+===================================================================
+--- linux-2.6.36.orig/fs/ext3/super.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/fs/ext3/super.c	2017-05-26 15:23:01.988453463 +0800
+@@ -2361,6 +2361,21 @@
+ 
+ 	if (!sbh)
+ 		return error;
++
++	if (buffer_write_io_error(sbh)) {
++		/*
++		 * Oh, dear.  A previous attempt to write the
++		 * superblock failed.  This could happen because the
++		 * USB device was yanked out.  Or it could happen to
++		 * be a transient write error and maybe the block will
++		 * be remapped.  Nothing we can do but to retry the
++		 * write and hope for the best.
++		 */
++		ext3_msg(sb, KERN_ERR, "previous I/O error to "
++		       "superblock detected");
++		clear_buffer_write_io_error(sbh);
++		set_buffer_uptodate(sbh);
++	}
+ 	/*
+ 	 * If the file system is mounted read-only, don't update the
+ 	 * superblock write time.  This avoids updating the superblock
+@@ -2377,8 +2392,16 @@
+ 	es->s_free_inodes_count = cpu_to_le32(ext3_count_free_inodes(sb));
+ 	BUFFER_TRACE(sbh, "marking dirty");
+ 	mark_buffer_dirty(sbh);
+-	if (sync)
++	if (sync) {
+ 		error = sync_dirty_buffer(sbh);
++		if (buffer_write_io_error(sbh)) {
++			ext3_msg(sb, KERN_ERR, "I/O error while writing "
++			       "superblock");
++			clear_buffer_write_io_error(sbh);
++			set_buffer_uptodate(sbh);
++		}
++	}
++
+ 	return error;
+ }
+ 
+Index: linux-2.6.36/fs/ext4/super.c
+===================================================================
+--- linux-2.6.36.orig/fs/ext4/super.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/fs/ext4/super.c	2017-05-25 17:03:43.823352000 +0800
+@@ -2924,6 +2924,10 @@
+ 	get_random_bytes(&sbi->s_next_generation, sizeof(u32));
+ 	spin_lock_init(&sbi->s_next_gen_lock);
+ 
++	init_timer(&sbi->s_err_report);
++	sbi->s_err_report.function = print_daily_error_info;
++	sbi->s_err_report.data = (unsigned long) sb;
++
+ 	sbi->s_stripe = ext4_get_stripe_size(sbi);
+ 	sbi->s_max_writeback_mb_bump = 128;
+ 
+@@ -3160,9 +3164,6 @@
+ 		 "Opts: %s%s%s", descr, sbi->s_es->s_mount_opts,
+ 		 *sbi->s_es->s_mount_opts ? "; " : "", orig_data);
+ 
+-	init_timer(&sbi->s_err_report);
+-	sbi->s_err_report.function = print_daily_error_info;
+-	sbi->s_err_report.data = (unsigned long) sb;
+ 	if (es->s_error_count)
+ 		mod_timer(&sbi->s_err_report, jiffies + 300*HZ); /* 5 minutes */
+ 
+@@ -3189,6 +3190,7 @@
+ 	percpu_counter_destroy(&sbi->s_dirs_counter);
+ 	percpu_counter_destroy(&sbi->s_dirtyblocks_counter);
+ failed_mount3:
++	del_timer(&sbi->s_err_report);
+ 	if (sbi->s_flex_groups) {
+ 		if (is_vmalloc_addr(sbi->s_flex_groups))
+ 			vfree(sbi->s_flex_groups);
+Index: linux-2.6.36/fs/jbd/journal.c
+===================================================================
+--- linux-2.6.36.orig/fs/jbd/journal.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/fs/jbd/journal.c	2017-05-26 15:22:39.856453463 +0800
+@@ -84,6 +84,7 @@
+ 
+ static int journal_convert_superblock_v1(journal_t *, journal_superblock_t *);
+ static void __journal_abort_soft (journal_t *journal, int errno);
++static const char *journal_dev_name(journal_t *journal, char *buffer);
+ 
+ /*
+  * Helper function used to manage commit timeouts
+@@ -1010,6 +1011,23 @@
+ 		goto out;
+ 	}
+ 
++	if (buffer_write_io_error(bh)) {
++		char b[BDEVNAME_SIZE];
++		/*
++		 * Oh, dear.  A previous attempt to write the journal
++		 * superblock failed.  This could happen because the
++		 * USB device was yanked out.  Or it could happen to
++		 * be a transient write error and maybe the block will
++		 * be remapped.  Nothing we can do but to retry the
++		 * write and hope for the best.
++		 */
++		printk(KERN_ERR "JBD: previous I/O error detected "
++		       "for journal superblock update for %s.\n",
++		       journal_dev_name(journal, b));
++		clear_buffer_write_io_error(bh);
++		set_buffer_uptodate(bh);
++	}
++
+ 	spin_lock(&journal->j_state_lock);
+ 	jbd_debug(1,"JBD: updating superblock (start %u, seq %d, errno %d)\n",
+ 		  journal->j_tail, journal->j_tail_sequence, journal->j_errno);
+@@ -1021,9 +1039,17 @@
+ 
+ 	BUFFER_TRACE(bh, "marking dirty");
+ 	mark_buffer_dirty(bh);
+-	if (wait)
++	if (wait) {
+ 		sync_dirty_buffer(bh);
+-	else
++		if (buffer_write_io_error(bh)) {
++			char b[BDEVNAME_SIZE];
++			printk(KERN_ERR "JBD: I/O error detected "
++			       "when updating journal superblock for %s.\n",
++			       journal_dev_name(journal, b));
++			clear_buffer_write_io_error(bh);
++			set_buffer_uptodate(bh);
++		}
++	} else
+ 		write_dirty_buffer(bh, WRITE);
+ 
+ out:

@@ -1,0 +1,16 @@
+Index: linux-2.6.36/net/bridge/br_fdb.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_fdb.c	2017-04-26 10:52:45.763514743 +0800
++++ linux-2.6.36/net/bridge/br_fdb.c	2017-04-26 10:57:27.912913851 +0800
+@@ -510,6 +510,11 @@
+ 		return;
+ 
+ 	fdb = fdb_find(head, addr);
++	/* if packets come frome WAN with LAN device MAC, don't update brctl MAC table */
++	if(fdb){
++		if((!strncmp(fdb->dst->dev->name, "eth", 3) || !strncmp(fdb->dst->dev->name, "ra", 2)) && (!strncmp(source->dev->name, "nas", 3)))
++			return;
++	}
+ 	if (likely(fdb)) {
+ 		/* attempt to update an entry for a local interface */
+ 		if (unlikely(fdb->is_local)) {

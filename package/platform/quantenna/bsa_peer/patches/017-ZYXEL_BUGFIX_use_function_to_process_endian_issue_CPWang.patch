@@ -1,0 +1,127 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-29 12:18:37.405121999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-29 12:37:37.436055924 +0800
+@@ -178,7 +178,7 @@
+             cp = strchr(buf, '(');
+             if(cp) {
+             	cp += 1;
+-            	i = 0; 
++            	i = 0;
+             	while(i<4) {
+                 	if(*cp == '/') {
+                 		region[i] = '\0';
+@@ -202,7 +202,7 @@
+ 
+ 	if( (!strcmp(region, "US")) || (!strcmp(region, "Q2"))) {
+ 		for(i=0; i<(sizeof(opclass_table_US)/sizeof(opclass_t)); i++) {
+-			if((opclass_table_US[i].band == band) && (opclass_table_US[i].CurBandwidth == CurBandwidth) && 
++			if((opclass_table_US[i].band == band) && (opclass_table_US[i].CurBandwidth == CurBandwidth) &&
+ 				(opclass_table_US[i].sideband == sideband)) {
+ 				for(k=0; k<opclass_table_US[i].chanlist_len; k++) {
+ 					if(opclass_table_US[i].chanlist[k] == channel) {
+@@ -215,7 +215,7 @@
+ 	}
+ 	else if( (!strcmp(region, "EU")) || (!strcmp(region, "E0"))) {
+ 		for(i=0; i<(sizeof(opclass_table_EU)/sizeof(opclass_t)); i++) {
+-			if((opclass_table_EU[i].band == band) && (opclass_table_EU[i].CurBandwidth == CurBandwidth) && 
++			if((opclass_table_EU[i].band == band) && (opclass_table_EU[i].CurBandwidth == CurBandwidth) &&
+ 				(opclass_table_EU[i].sideband == sideband)) {
+ 				for(k=0; k<opclass_table_EU[i].chanlist_len; k++) {
+ 					if(opclass_table_EU[i].chanlist[k] == channel) {
+@@ -224,7 +224,7 @@
+ 					}
+ 				}
+ 			}
+-		}	
++		}
+ 	}
+ 	else {
+ 		bsa_printf(BSA_ERROR, "BSA_PEER:[%s] country region %s can't match\n", __FUNCTION__, region);
+@@ -437,7 +437,7 @@
+ 			bsa_brcm_get_operating_class(ifname, drv_event_gen_info->band, chspec.bw,
+ 					drv_event_gen_info->channel, (unsigned int)chspec.sb, &(drv_event_gen_info->opclass));
+ 			/* get phy type */
+-			bsa_brcm_get_phy_type(ifname, &(drv_event_gen_info->phytype)); 
++			bsa_brcm_get_phy_type(ifname, &(drv_event_gen_info->phytype));
+ 			drv_event_gen_info->drivercap = 0x0; // initialize drivercap
+ 			/*
+ 			enum RPE_intf_bss_capab {
+@@ -1181,7 +1181,7 @@
+ 	}
+ 
+     // SONiQ is little endian, so swap the byte
+-    cmd = (char)((bsa_mac_filter->allow_mac >> 8) & 0x00FF);
++    cmd = (char)htole16(bsa_mac_filter->allow_mac);
+ 
+     fprintf(stderr, "%s line %d, %s(): intf_name[%d] = %s, cmd = %d, MAC = %02X:%02X:%02X:%02X:%02X:%02X\n",
+         __FILE__, __LINE__, __FUNCTION__, index, bsa_conf_info[index].ifname, cmd,
+@@ -1411,7 +1411,7 @@
+ 			if(curr_time >= stop_time) {
+ 				fat_monitor_result.avg_fat = sum_fat/fat_monitor_times;
+ 				bsa_printf(BSA_DEBUG, "BSA_PEER: avg_fat %d\n", fat_monitor_result.avg_fat);
+-				// reset 
++				// reset
+ 				sum_fat = 0;
+ 				fat_monitor_times = 0;
+ 				// reset start_time and stop_time
+@@ -1453,7 +1453,7 @@
+ 		pthread_join(fat_monitor_thread, NULL);
+ 		fat_monitor_thread = 0;
+ 	}
+-	
++
+ 	pthread_mutex_init(&fat_monitor_mutex,NULL);
+ 	retval = pthread_create(&fat_monitor_thread, NULL, fat_monitor_periodically, (void *) fat_monitor_params);
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-29 12:18:37.405121999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-29 12:37:17.315756649 +0800
+@@ -1,7 +1,9 @@
+ #ifndef __BSA_DRIVER_BRCM_H__
+ #define __BSA_DRIVER_BRCM_H__
+ 
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#define _USE_IEEE80211_H_   1
++
++#if _USE_IEEE80211_H_ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #include "net80211/ieee80211_ioctl.h"
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+@@ -12,7 +14,7 @@
+ #define BSA_PROBE_EVENT_REQ		1
+ #define BSA_CONNECT_COMPLETE_EVENT	2
+ 
+-#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#if ! _USE_IEEE80211_H_ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #define	IEEE80211_ADDR_LEN	6		/* size of 802.11 address */
+ 
+ /*
+@@ -58,7 +60,7 @@
+ 	uint32_t offset;
+ }__attribute__((packed));
+ 
+-#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#if ! _USE_IEEE80211_H_ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ /*
+  * 802.11n HT Capability IE
+  */
+@@ -247,7 +249,7 @@
+ 	uint8_t payload[0];
+ }__attribute__((packed));
+ 
+-#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#if ! _USE_IEEE80211_H_ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ struct ieee80211_bsa_sta_info {
+ 	uint64_t ts_last_rx_pkt;
+ 	uint64_t ts_last_tx_pkt;
+@@ -273,7 +275,7 @@
+ struct fat_monitor_result_t {
+ 	uint8_t channel;
+ 	uint8_t band;
+-	uint16_t avg_fat;	
++	uint16_t avg_fat;
+ }__attribute__((packed));
+ 
+ int bsa_brcm_get_channel_info_from_chanspec(int chanspec, struct ChSpec *chspec);

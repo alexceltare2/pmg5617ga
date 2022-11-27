@@ -1,0 +1,14 @@
+Index: bsa_peer/Makefile
+===================================================================
+--- bsa_peer.orig/Makefile	2017-04-27 14:35:23.948525239 +0800
++++ bsa_peer/Makefile	2017-04-27 14:38:14.497433483 +0800
+@@ -31,6 +31,9 @@
+ CFLAGS += -DCONFIG_QTN_BSA_SUPPORT
+ CFLAGS += -ljson -pthread
+ 
++#define the number of interface for 2.4G and 5G
++CFLAGS += -DTOTAL_INTERFACE_24G=$(CONFIG_ZYXEL_WIFI_NUM_OF_24G_SSID_INTERFACE)
++CFLAGS += -DTOTAL_INTERFACE_5G=$(CONFIG_ZYXEL_WIFI_NUM_OF_5G_SSID_INTERFACE)
+ 
+ BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o
+ FASTSTEERSTAOBJS = fast_steer_sta.o

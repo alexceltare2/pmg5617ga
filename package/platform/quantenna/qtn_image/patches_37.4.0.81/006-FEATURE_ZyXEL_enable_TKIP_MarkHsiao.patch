@@ -1,0 +1,34 @@
+Index: qtn_image/source/buildroot/package/zhostapd/zhostapd.config
+===================================================================
+--- qtn_image.orig/source/buildroot/package/zhostapd/zhostapd.config
++++ qtn_image/source/buildroot/package/zhostapd/zhostapd.config
+@@ -160,4 +160,4 @@ CONFIG_P2P_MANAGER=y
+ # Ignore configuration errors
+ CONFIG_WPA_IGNORE_CONFIG_ERRORS=y
+ # support TKIP in AP mode
+-#WPA_TKIP_SUPPORT=y
++WPA_TKIP_SUPPORT=y
+Index: qtn_image/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config
+===================================================================
+--- qtn_image.orig/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config
++++ qtn_image/source/buildroot/package/wpa_supplicant/wpa_supplicant-1.1.config
+@@ -475,5 +475,5 @@ CONFIG_TDLS=y
+ # Ignore configuration errors
+ CONFIG_WPA_IGNORE_CONFIG_ERRORS=y
+ # support TKIP in AP mode
+-#WPA_TKIP_SUPPORT=y
++WPA_TKIP_SUPPORT=y
+ 
+Index: qtn_image/source/Makefile
+===================================================================
+--- qtn_image.orig/source/Makefile
++++ qtn_image/source/Makefile
+@@ -55,7 +55,7 @@ tiny_uboot_enabled ?= 0
+ endif
+ 
+ sigma_testbed_support_enabled ?= 0
+-tkip_support_enabled ?= $(sigma_testbed_support_enabled)
++tkip_support_enabled ?= 1
+ flash_env_size ?= 24
+ support_umm ?= 0
+ support_256MB_DDR ?= 0

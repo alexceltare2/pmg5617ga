@@ -1,0 +1,15 @@
+Index: qtn_image/source/buildroot/package/zhostapd/hostapd-2.1/src/wps/wps_registrar.c
+===================================================================
+--- qtn_image.orig/source/buildroot/package/zhostapd/hostapd-2.1/src/wps/wps_registrar.c	2016-04-06 19:45:38.000000000 +0800
++++ qtn_image/source/buildroot/package/zhostapd/hostapd-2.1/src/wps/wps_registrar.c	2016-08-12 17:57:56.301060200 +0800
+@@ -1121,6 +1121,10 @@
+ 		if (reg->wps->vendor == WPS_VENDOR_NETGEAR) {
+ 			if (reg->wps->event_cb != NULL)
+ 				reg->wps->event_cb(reg->wps->cb_ctx, WPS_EV_INIT, NULL);
++        } else {
++            if (reg->wps->event_cb) {
++                reg->wps->event_cb(reg->wps->cb_ctx, WPS_EV_PIN_TIMEOUT, NULL);
++            }
+ 		}
+ 		return 1;
+ 	}

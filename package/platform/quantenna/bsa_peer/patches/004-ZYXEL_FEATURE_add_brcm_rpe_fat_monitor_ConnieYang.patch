@@ -1,0 +1,185 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-15 11:38:48.707972117 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-15 11:39:19.647766289 +0800
+@@ -122,7 +122,19 @@
+ 		}
+ 		case BSA_INTF_INFO_FAT_CMD:
+ 		{
++			sprintf(cmd, "zywlctl -i %s get_intf_info_fat > %s", ifname, file_path);
++			system(cmd);
++			intf_info_Jobj = json_object_from_file(file_path);
++			printf("%s: %s\n", __FUNCTION__, json_object_to_json_string(intf_info_Jobj));
++
+ 			drv_event_fat_info = &drv_event_info->u.bsa_drv_intf_fat_info_var;
++			drv_event_fat_info->band = json_object_get_int(json_object_object_get(intf_info_Jobj, "band"));
++			drv_event_fat_info->channel = json_object_get_int(json_object_object_get(intf_info_Jobj, "channel"));
++			drv_event_fat_info->avg_fat = 10*json_object_get_int(json_object_object_get(intf_info_Jobj, "avg_fat"));
++
++			drv_event_info->cmd_spec = sub_cmd;
++
++			json_object_put(intf_info_Jobj);
+ 			break;
+ 		}
+ 		default:
+@@ -249,25 +261,12 @@
+ 	if (!event_buff)
+ 		return -ENOMEM;
+ 
+-	if (cmd_spec == BSA_INTF_INFO_GEN_CMD) {
++	if ((cmd_spec == BSA_INTF_INFO_GEN_CMD) || (cmd_spec == BSA_INTF_INFO_FAT_CMD)) {
+ 		drv_event_info = (void *)event_buff;
+ 		bsa_sub_cmd_process(bsa_conf_info[index].ifname, cmd_spec, drv_event_info);
+-
+-	}
+-	else if (cmd_spec == BSA_INTF_INFO_FAT_CMD) {
+-#if 0
+-		bsa_sub_cmd_process(bsa_conf_info[index].ifname, cmd_spec);
+-
+-		drv_event_info = (void *)event_buff;
+-		drv_event_fat_info = &drv_event_info->u.bsa_drv_intf_fat_info_var;
+-		drv_event_fat_info->channel = bsa_intf_fat_req.channel;
+-		drv_event_fat_info->band = bsa_intf_fat_req.band;
+-		drv_event_fat_info->avg_fat = bsa_intf_fat_req.avg_fat;
+-		drv_event_info->cmd_spec = cmd_spec;
+-#endif
+ 	}
+ 	else {
+-		bsa_printf(BSA_ERROR, "BSA_PEER: Unknown interface info command");
++		bsa_printf(BSA_ERROR, "BSA_PEER: Unknown interface info command, cmd_spec %d", cmd_spec);
+ 		free(event_buff);
+ 		return -ENOMEM;
+ 	}
+@@ -617,6 +616,13 @@
+ 	return retval;
+ }
+ 
++int bsa_brcm_start_fat_monitor(void *priv, int index, uint8_t ifname[], uint32_t fat_period) {
++	int retval = 0;
++
++	printf("[%s] ifname %s, fat_period %d\n", __FUNCTION__, ifname, fat_period);
++	return retval;
++}
++
+ const struct bsa_driver_ops bsa_driver_brcm_ops = {
+ 	.vendor_id = BSA_VENDOR_ID_BRCM_PEARL,
+ 	.desc = "BRCM PEARL",
+@@ -632,4 +638,5 @@
+ 	.stop_monitor = bsa_brcm_stop_monitor,
+ 	.get_associated_clients = bsa_brcm_get_associated_stations_info,
+ 	.send_btm_req = bsa_brcm_send_btm_req,
++	.start_fat_monitor = bsa_brcm_start_fat_monitor,
+ };
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-15 11:38:48.707972117 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-15 11:39:02.991877077 +0800
+@@ -84,9 +84,11 @@
+ 	struct bsa_peer_entity *bsa_peer = (void *) cmd_ctx;
+ 	struct bsa_command *bsa_cmd_buffer = (void *) buffer;
+ 	struct bsa_cmd_intf_ds *bsa_cmd_intf_info = NULL;
++	struct bsa_cmd_start_fat_monitor_ds *fat_monitor_cmd = NULL;
+ 	const struct bsa_driver_ops *driver_cb;
+ 	int index = -1, i = 0;
+ 	uint32_t cmd_spec = BSA_INTF_INFO_GEN_CMD;
++	uint32_t fat_period = 0;
+ 	
+ 	bsa_cmd_buffer->cmdid = htole16(bsa_cmd_buffer->cmdid);
+ 	bsa_cmd_buffer->payload_len = htole16(bsa_cmd_buffer->payload_len);
+@@ -189,7 +191,7 @@
+ 		}
+ 		bsa_cmd_intf_info = (struct bsa_cmd_intf_ds *)&bsa_cmd_buffer->payload;
+ 		if (bsa_cmd_intf_info) {
+-			cmd_spec = bsa_cmd_intf_info->cmd_specifier;
++			cmd_spec = htole32(bsa_cmd_intf_info->cmd_specifier);
+ 		}
+ 		driver_cb->get_intf_info(bsa_peer, index, cmd_spec);
+ 		break;
+@@ -268,6 +270,18 @@
+ 		driver_cb->send_btm_req(bsa_peer, index, bsa_cmd_buffer->payload);
+ 		break;
+ 
++	case BSA_CMD_START_FAT_MONITORING:
++		bsa_printf(BSA_DEBUG, "BSA_PEER: send start fat monitoring; ifname=%s", bsa_conf_info[index].ifname);
++		driver_cb = bsa_conf_info[index].bsa_peer_driver_cb;
++		if (!driver_cb) {
++			bsa_printf(BSA_WARN, "BSA_PEER: NULL driver cb for index %d", index);
++			return -EINVAL;
++		}
++		fat_monitor_cmd = (struct bsa_cmd_start_fat_monitor_ds*)&bsa_cmd_buffer->payload;
++		fat_period = htole32(fat_monitor_cmd->fat_period);
++		driver_cb->start_fat_monitor(bsa_peer, index, fat_monitor_cmd->ifname, fat_period);		
++		break;
++
+ 	default:
+ 		bsa_printf(BSA_WARN, "BSA_PEER: Unknown command ID %d", bsa_cmd_buffer->cmdid);
+ 		break;
+@@ -732,7 +746,7 @@
+ 				}
+ 				uint16_t beacon_interval_endian = htole16(intf_info->beacon_interval);
+ 				pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &beacon_interval_endian, 2);
+-				bsa_printf(BSA_DEBUG, "BSA_PEER: Interface info event: bssid="MACSTR", drivercap %x, capinfo %x",
++				bsa_printf(BSA_DEBUG, "BSA_PEER: Interface info gen event: bssid="MACSTR", drivercap %x, capinfo %x",
+ 						MAC2STR(event_buffer->bssid), intf_info->drivercap, intf_info->capinfo);
+ 			}
+ 			break;
+@@ -742,8 +756,10 @@
+ 				intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
+ 				value[0] = intf_fat_info->channel;
+ 				value[1] = intf_fat_info->band;
+-				*(uint16_t *)&value[2] = intf_fat_info->avg_fat;
++				*(uint16_t *)&value[2] = htole16(intf_fat_info->avg_fat);
+ 				pos += bsa_encap_tlv(pos, TLVTYPE_AVERAGE_FAT, value, 4);
++				bsa_printf(BSA_DEBUG, "BSA_PEER: Interface info fat event: bssid="MACSTR", band %d, channel %d, fat %d",
++						MAC2STR(event_buffer->bssid), intf_fat_info->band, intf_fat_info->channel, intf_fat_info->avg_fat);
+ 			}
+ 			break;
+ 		}
+Index: bsa-1.0.1/bsa_peer/bsa_conf.txt
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_conf.txt	2017-04-15 11:38:48.679972304 +0800
++++ bsa-1.0.1/bsa_peer/bsa_conf.txt	2017-04-15 11:38:57.527913430 +0800
+@@ -1,2 +1 @@
+-5g_band_interface=wifi0
+ 2g_band_interface=wl0
+Index: bsa-1.0.1/bsa_peer/bsa_driver.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver.h	2017-04-15 11:38:48.675972329 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver.h	2017-04-15 11:38:48.723972011 +0800
+@@ -74,6 +74,7 @@
+ 	int (*stop_monitor)(void *priv, int index);
+ 	int (*get_associated_clients)(void *priv, int index);
+ 	int (*send_btm_req)(void *priv, int index, void *cmd_info);
++	int (*start_fat_monitor)(void *priv, int index, uint8_t ifname[], uint32_t fat_period);
+ };
+ 
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-15 11:38:48.707972117 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-15 11:38:48.723972011 +0800
+@@ -209,6 +209,12 @@
+ 	uint8_t ifname[IFNAMSIZ];
+ }__attribute__((packed));
+ 
++struct bsa_cmd_start_fat_monitor_ds {
++	uint8_t ifname_size;
++	uint8_t ifname[IFNAMSIZ];
++	uint32_t fat_period;
++}__attribute__((packed));
++
+ struct bsa_command {
+ 	uint16_t cmdid;
+ 	uint8_t cmd_type;  /* 0 - fixed, 1 - TLV format */
+Index: bsa-1.0.1/include/bsa_common_defs.h
+===================================================================
+--- bsa-1.0.1.orig/include/bsa_common_defs.h	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/include/bsa_common_defs.h	2017-04-15 11:38:48.723972011 +0800
+@@ -278,6 +278,7 @@
+ 	BSA_CMD_STA_MAC_FILTER	= 0x0006,
+ 	BSA_CMD_GET_STA_STATS = 0x0007,
+ 	BSA_CMD_BSS_TRANS_REQ   = 0x0008,
++	BSA_CMD_START_FAT_MONITORING   = 0x0009,
+ 	BSA_CMD_MONITOR_START = 0x000a,
+ 	BSA_CMD_MONITOR_STOP = 0X000b,
+ 	BSA_CMD_GET_NONASSOC_STATS = 0x000c,

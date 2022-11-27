@@ -1,0 +1,10 @@
+echo active 6 0 > /proc/tc3162/gpio_output
+echo active 24 0 > /proc/tc3162/gpio_output
+echo active 11 0 > /proc/tc3162/gpio_output
+echo active 69 0 > /proc/tc3162/gpio_output
+echo active 10 0 > /proc/tc3162/gpio_output
+echo active 8 0 > /proc/tc3162/gpio_output
+echo active 28 0 > /proc/tc3162/gpio_output
+echo active 29 0 > /proc/tc3162/gpio_output
+echo active 3 0 > /proc/tc3162/gpio_output
+echo active 25 0 > /proc/tc3162/gpio_output

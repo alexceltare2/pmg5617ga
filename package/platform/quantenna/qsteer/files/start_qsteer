@@ -1,0 +1,53 @@
+#!/bin/sh
+
+QTN_CTL_IP="169.254.123.2"
+
+kill_process()
+{
+	pid_name=$1
+	pid=`ps | grep "$pid_name" | grep -v "grep $pid_name" | awk '{print $1}'`
+	# Checking pid is empty
+	if [ -n "$pid" ]; then
+		kill $pid
+	fi
+}
+
+start()
+{
+	echo "Starting qsteer..."
+	echo "QTN_CTL_IP = ${QTN_CTL_IP}"
+	/bin/csmd -c /etc/csmd.json -p /usr/lib &
+	/bin/rpecat -c netlink -r `call_qcsapi_sockrpc --host ${QTN_CTL_IP} get_macaddr br0` &
+}
+
+stop()
+{
+	echo "Stopping qsteer..."
+#	kill_process "/bin/csmd"
+#	kill_process "/bin/rpecat"
+	killall -9 csmd 2>/dev/null
+	killall -9 rpecat 2>/dev/null
+}
+
+restart()
+{
+	stop
+	start
+}
+
+case "$1" in
+	start)
+	start
+	;;
+	stop)
+	stop
+	;;
+	restart|reload)
+	restart
+	;;
+	*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

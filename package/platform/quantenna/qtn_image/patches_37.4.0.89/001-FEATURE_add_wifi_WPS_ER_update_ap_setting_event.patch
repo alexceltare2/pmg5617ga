@@ -1,0 +1,15 @@
+Index: qtn_image/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c
+===================================================================
+--- qtn_image.orig/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c
++++ qtn_image/source/buildroot/package/zhostapd/hostapd-2.1/src/ap/wps_hostapd.c
+@@ -728,7 +728,9 @@ static int hapd_wps_cred_cb(struct hosta
+ 			       ifname);
+ 
+ 	wpa_printf(MSG_DEBUG, "WPS: AP configuration updated");
+-
++#if 1 //ZYXEL,Mark	
++	hostapd_send_wlan_msg(hapd, "WPS AP configuration updated");
++#endif
+ 	return 0;
+ }
+ 

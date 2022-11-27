@@ -1,0 +1,14 @@
+Index: linux-2.6.36/net/ipv6/addrconf.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/addrconf.c	2017-04-26 03:23:04.000000000 +0800
++++ linux-2.6.36/net/ipv6/addrconf.c	2017-04-27 16:55:07.930877149 +0800
+@@ -2415,7 +2415,8 @@
+ 	if (IS_ERR(idev))
+ 		return;
+ 
+-#if defined(TCSUPPORT_IPV6_ENHANCEMENT) && !defined(TCSUPPORT_FWC_ENV)
++//#if defined(TCSUPPORT_IPV6_ENHANCEMENT) && !defined(TCSUPPORT_FWC_ENV)
++#if 0	//Redmine 30553, need to generate link local address according to EUI-64
+ 	/*Disable lan device add linklocal address,except br0*/
+ 	if(is_wan_dev(dev) || (strstr(dev->name, "br") != NULL)){
+ 		memset(&addr, 0, sizeof(struct in6_addr));

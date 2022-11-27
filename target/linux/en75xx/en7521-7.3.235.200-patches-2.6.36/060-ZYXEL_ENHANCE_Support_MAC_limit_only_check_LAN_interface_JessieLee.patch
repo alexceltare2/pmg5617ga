@@ -1,0 +1,33 @@
+Index: linux-2.6.36/net/bridge/br_fdb.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_fdb.c	2018-03-05 21:52:36.623888444 -0800
++++ linux-2.6.36/net/bridge/br_fdb.c	2018-03-05 21:58:34.683895313 -0800
+@@ -695,7 +695,7 @@
+ 		struct net_bridge_fdb_entry *f;
+ 		struct hlist_node *h, *n;
+ 		hlist_for_each_entry_safe(f, h, n, &br->hash[i], hlist) {
+-			if (!f->is_local) {
++			if ((!f->is_local) && strncmp(devName, "nas", 3)) {
+ 				macNumTotal++;
+ 				for(j = 0;j < CNT_DEVMACNUM;j++)
+ 				{
+Index: linux-2.6.36/net/bridge/br_input.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_input.c	2018-03-05 21:52:36.623888444 -0800
++++ linux-2.6.36/net/bridge/br_input.c	2018-03-05 22:00:52.295897953 -0800
+@@ -162,9 +162,12 @@
+ 	/*for dasan feature,if mac numbers of mac table > limit,drop packet*/
+ 	#ifdef TCSUPPORT_BRIDGE_MAC_LIMIT
+ 	br_fdb_need_flush(br);
+-	if((!br_fdb_mac_exist(br,eth_hdr(skb)->h_source,skb->dev->name))&&
+-		(br_fdb_judge_mac_num(br, skb->dev->name)))	
+-		goto drop;
++	if(strncmp(skb->dev->name, "nas", 3))
++	{
++		if((!br_fdb_mac_exist(br,eth_hdr(skb)->h_source,skb->dev->name))&&
++			(br_fdb_judge_mac_num(br, skb->dev->name)))	
++			goto drop;
++	}
+ 	#endif
+ 	
+ 	/* if packets come frome WAN with LAN device MAC, drop packets */

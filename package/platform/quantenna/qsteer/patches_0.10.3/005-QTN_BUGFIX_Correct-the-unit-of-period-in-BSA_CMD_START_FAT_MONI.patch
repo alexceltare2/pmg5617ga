@@ -1,0 +1,47 @@
+Index: qsteer-v0.10.3/csm/csm_helper.c
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csm_helper.c	2017-04-10 17:21:59.353934399 +0800
++++ qsteer-v0.10.3/csm/csm_helper.c	2017-04-10 17:25:20.585929807 +0800
+@@ -770,15 +770,12 @@
+ static int csm_bss_add_fat_monitor(stah_t * stah, void *data1, void *data2)
+ {
+ 	bss_table_t *bss = (bss_table_t *) stah;
+-#ifdef ARCH_IS_64BITS
+-	uint32_t msecs = (uint64_t) data1;
+-#else
+-	uint32_t msecs = (uint32_t) data1;
+-#endif
++	uint32_t secs = (uint32_t) data1;
++
+ 	csm_get(bss);
+-	csm_bss_send_start_fat_monitor(bss, msecs);
++	csm_bss_send_start_fat_monitor(bss, secs);
+ 	CSM_LOCK(bss);
+-	csm_timer_register(data2, msecs, csm_bss_get_fat_info, bss, NULL,
++	csm_timer_register(data2, secs * 1000, csm_bss_get_fat_info, bss, NULL,
+ 			   1);
+ 	CSM_UNLOCK(bss);
+ }
+@@ -800,19 +797,15 @@
+ 	csmctx_t *csm = GET_CSMCTX(handle);
+ 	int i;
+ 	struct sta_sdb *db = csm->bss_db;
+-#ifdef ARCH_IS_64BITS
+-	uint64_t msecs = secs * 1000;
+-#else
+-	uint32_t msecs = secs * 1000;
+-#endif
++
+ 	CSM_LOCK(db);
+ 	stadb_connect_signal_unlock(db, STA_SIGNAL_ON_CREATE, 1,
+ 				    csm_bss_add_fat_monitor,
+-				    (void *) msecs, csm);
++				    (void *) secs, csm);
+ 
+ 	stadb_connect_signal_unlock(db, STA_SIGNAL_ON_DESTROY, 0,
+ 				    csm_bss_remove_fat_monitor,
+-				    (void *) msecs, csm);
++				    (void *) secs, csm);
+ 
+ 	CSM_UNLOCK(db);
+ }

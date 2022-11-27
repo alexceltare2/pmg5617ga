@@ -1,0 +1,152 @@
+Index: linux-2.6.36/include/linux/netfilter/Kbuild
+===================================================================
+--- linux-2.6.36.orig/include/linux/netfilter/Kbuild	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/include/linux/netfilter/Kbuild	2017-04-22 15:30:35.731540454 +0800
+@@ -62,3 +62,4 @@
+ header-y += xt_tcpudp.h
+ header-y += xt_time.h
+ header-y += xt_u32.h
++header-y += xt_layer7.h
+Index: linux-2.6.36/Makefile
+===================================================================
+--- linux-2.6.36.orig/Makefile	2017-04-22 15:30:34.646998436 +0800
++++ linux-2.6.36/Makefile	2017-04-22 15:30:35.731540454 +0800
+@@ -595,6 +595,7 @@
+ KBUILD_CFLAGS += $(TC_CFLAGS)
+ endif
+ 
++LINUXINCLUDE += $(HOST_EXTRACFLAGS)
+ # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
+ # But warn user when we do so
+ warn-assign = \
+Index: linux-2.6.36/include/linux/netfilter_ipv4/Kbuild
+===================================================================
+--- linux-2.6.36.orig/include/linux/netfilter_ipv4/Kbuild	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/include/linux/netfilter_ipv4/Kbuild	2017-04-22 15:30:35.731540454 +0800
+@@ -12,3 +12,4 @@
+ header-y += ipt_ecn.h
+ header-y += ipt_realm.h
+ header-y += ipt_ttl.h
++header-y += ipt_TRIGGER.h
+Index: linux-2.6.36/fs/Makefile
+===================================================================
+--- linux-2.6.36.orig/fs/Makefile	2017-04-22 15:30:33.282316432 +0800
++++ linux-2.6.36/fs/Makefile	2017-04-22 15:30:35.731540454 +0800
+@@ -127,7 +127,7 @@
+ obj-$(CONFIG_EXOFS_FS)          += exofs/
+ obj-$(CONFIG_CEPH_FS)		+= ceph/
+ 
+-#obj-$(CONFIG_YAFFS_FS)		+= yaffs2/
+-ifneq ($(TCSUPPORT_YAFFS_FS),)
+-obj-y		+= yaffs2/
+-endif
++obj-$(CONFIG_YAFFS_FS)		+= yaffs2/
++#ifneq ($(TCSUPPORT_YAFFS_FS),)
++#obj-y		+= yaffs2/
++#endif
+Index: linux-2.6.36/fs/yaffs2/Makefile
+===================================================================
+--- linux-2.6.36.orig/fs/yaffs2/Makefile	2017-04-22 15:30:34.482916434 +0800
++++ linux-2.6.36/fs/yaffs2/Makefile	2017-04-22 15:30:35.731540454 +0800
+@@ -2,10 +2,10 @@
+ # Makefile for the linux YAFFS filesystem routines.
+ #
+ 
+-#obj-$(CONFIG_YAFFS_FS) += yaffs.o
+-ifneq ($(TCSUPPORT_YAFFS_FS),)
+-obj-y += yaffs.o
+-endif
++obj-$(CONFIG_YAFFS_FS) += yaffs.o
++#ifneq ($(TCSUPPORT_YAFFS_FS),)
++#obj-y += yaffs.o
++#endif
+ 
+ yaffs-y := yaffs_ecc.o yaffs_vfs.o yaffs_guts.o yaffs_checkptrw.o
+ yaffs-y += yaffs_packedtags1.o yaffs_packedtags2.o yaffs_nand.o
+Index: linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/chips/spi_nand_flash.c	2017-04-22 15:30:30.440896436 +0800
++++ linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c	2017-04-22 15:30:35.735542452 +0800
+@@ -95,7 +95,7 @@
+ #include <asm/tc3162/tc3162.h>
+ 
+ #if defined (TCSUPPORT_GPON_DUAL_IMAGE) || defined (TCSUPPORT_EPON_DUAL_IMAGE)
+-#include "flash_layout/tc_partition.h"
++#include "tc_partition.h"
+ #endif
+ 
+ #ifdef TCSUPPORT_NAND_BMT
+Index: linux-2.6.36/drivers/mtd/maps/tc3162-flash.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/maps/tc3162-flash.c	2017-04-22 15:30:30.444898436 +0800
++++ linux-2.6.36/drivers/mtd/maps/tc3162-flash.c	2017-04-22 15:30:35.735542452 +0800
+@@ -17,7 +17,7 @@
+ #endif
+ 
+ #if defined (TCSUPPORT_GPON_DUAL_IMAGE) || defined (TCSUPPORT_EPON_DUAL_IMAGE)
+-#include "flash_layout/tc_partition.h"
++#include "tc_partition.h"
+ #endif
+ 
+ 
+Index: linux-2.6.36/drivers/mtd/mtk/nand.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/mtk/nand.c	2017-04-22 15:30:30.448900435 +0800
++++ linux-2.6.36/drivers/mtd/mtk/nand.c	2017-04-22 15:30:35.735542452 +0800
+@@ -65,7 +65,7 @@
+ #include <asm/tc3162/tc3162.h>
+ 
+ #if defined (TCSUPPORT_GPON_DUAL_IMAGE) || defined (TCSUPPORT_EPON_DUAL_IMAGE)
+-#include "flash_layout/tc_partition.h"
++#include "tc_partition.h"
+ #endif
+ 
+ #define VERSION  	"v2.0"
+Index: linux-2.6.36/include/ecnt_hook/ecnt_hook_multicast.h
+===================================================================
+--- linux-2.6.36.orig/include/ecnt_hook/ecnt_hook_multicast.h	2017-04-22 15:30:34.498924436 +0800
++++ linux-2.6.36/include/ecnt_hook/ecnt_hook_multicast.h	2017-04-22 15:30:35.735542452 +0800
+@@ -42,7 +42,7 @@
+ *************************************************************************
+ */
+ #include <ecnt_hook/ecnt_hook.h>
+-#include "../../modules/private/ecnt_igmp/ecnt_igmp.h"
++#include "ecnt_igmp.h"
+ 
+ 
+ /************************************************************************
+Index: linux-2.6.36/include/linux/usb.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/usb.h	2017-04-22 15:30:34.630990430 +0800
++++ linux-2.6.36/include/linux/usb.h	2017-04-22 16:00:20.279368432 +0800
+@@ -486,10 +486,8 @@
+ 
+ 	unsigned long active_duration;
+ #ifdef TCSUPPORT_USB_HOST_LED
+-#if defined(TCSUPPORT_CPU_MT7510) || defined(TCSUPPORT_CPU_MT7520) || defined(TCSUPPORT_CPU_MT7505)
+ 	u8 phyportnum;
+ #endif
+-#endif
+ #ifdef CONFIG_PM
+ 	unsigned long last_busy;
+ 	int autosuspend_delay;
+Index: linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h
+===================================================================
+--- linux-2.6.36.orig/arch/mips/include/asm/tc3162/ledcetrl.h	2017-04-22 16:01:58.352380434 +0800
++++ linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h	2017-04-22 16:02:35.983186442 +0800
+@@ -82,7 +82,6 @@
+ #endif
+ 
+ #ifdef TCSUPPORT_USB_HOST_LED
+-#if defined(TCSUPPORT_CPU_MT7510) || defined(TCSUPPORT_CPU_MT7520) || defined(TCSUPPORT_CPU_MT7505)
+ #define USBPHYPORT1 1
+ #define USBPHYPORT2 2
+ 
+@@ -91,7 +90,6 @@
+ #define USB_BLINK 3
+ #define USB_DEFAULT 4
+ #endif
+-#endif
+ 
+ #ifdef TCSUPPORT_WLAN_LED_BY_SW
+ #define WLAN_DISCONNECT 0

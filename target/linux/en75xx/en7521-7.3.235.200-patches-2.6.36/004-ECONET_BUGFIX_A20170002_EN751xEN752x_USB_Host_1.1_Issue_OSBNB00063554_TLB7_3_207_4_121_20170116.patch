@@ -1,0 +1,63 @@
+Index: linux-2.6.36/drivers/usb/host/mtk_xhci/xhci-ring.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/host/mtk_xhci/xhci-ring.c	2017-04-22 16:45:22.377742439 +0800
++++ linux-2.6.36/drivers/usb/host/mtk_xhci/xhci-ring.c	2017-04-24 16:55:13.272181190 +0800
+@@ -3254,7 +3254,7 @@
+ 		/* Set the TRB length, TD size, and interrupter fields. */
+ 		if(num_trbs >1){
+ 			remainder = xhci_td_remainder(urb->transfer_buffer_length, 
+-				running_total, urb->ep->desc.wMaxPacketSize, trb_buff_len);
++				running_total, usb_endpoint_maxp(&urb->ep->desc), trb_buff_len);
+ 		}
+ 		
+ 		length_field = TRB_LEN(trb_buff_len) |
+@@ -3348,12 +3348,12 @@
+ 	/* FIXME: this doesn't deal with URB_ZERO_PACKET - need one more */
+ 	switch(urb->dev->speed){
+ 		case USB_SPEED_SUPER:
+-			max_packet = urb->ep->desc.wMaxPacketSize;
++			max_packet = usb_endpoint_maxp(&urb->ep->desc);
+ 			break;
+ 		case USB_SPEED_HIGH:
+ 		case USB_SPEED_FULL:
+ 		case USB_SPEED_LOW:
+-			max_packet = urb->ep->desc.wMaxPacketSize & 0x7ff;
++			max_packet = usb_endpoint_maxp(&urb->ep->desc) & 0x7ff;
+ 			break;
+ 	}
+ 	if((urb->transfer_flags & URB_ZERO_PACKET) 
+@@ -3673,12 +3673,12 @@
+ 
+ 	switch(urb->dev->speed){
+ 		case USB_SPEED_SUPER:
+-			max_packet = urb->ep->desc.wMaxPacketSize;
++			max_packet = usb_endpoint_maxp(&urb->ep->desc);
+ 			break;
+ 		case USB_SPEED_HIGH:
+ 		case USB_SPEED_FULL:
+ 		case USB_SPEED_LOW:
+-			max_packet = urb->ep->desc.wMaxPacketSize & 0x7ff;
++			max_packet = usb_endpoint_maxp(&urb->ep->desc) & 0x7ff;
+ 			break;
+ 	}
+ 
+Index: linux-2.6.36/drivers/usb/host/mtk_xhci/xhci.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/host/mtk_xhci/xhci.c	2017-04-22 16:45:22.369738427 +0800
++++ linux-2.6.36/drivers/usb/host/mtk_xhci/xhci.c	2017-04-24 16:55:13.312181190 +0800
+@@ -1718,12 +1718,12 @@
+ 		}
+ 		if(udev->speed == USB_SPEED_FULL || udev->speed == USB_SPEED_HIGH 
+ 			|| udev->speed == USB_SPEED_LOW){
+-			maxp = ep->desc.wMaxPacketSize & 0x7FF;
+-			burst = ep->desc.wMaxPacketSize >> 11;
++			maxp = usb_endpoint_maxp(&ep->desc) & 0x7FF;
++			burst = usb_endpoint_maxp(&ep->desc) >> 11;
+ 			mult = 0;
+ 		}
+ 		else if(udev->speed == USB_SPEED_SUPER){
+-			maxp = ep->desc.wMaxPacketSize & 0x7FF;
++			maxp = usb_endpoint_maxp(&ep->desc) & 0x7FF;
+ 			burst = ep->ss_ep_comp.bMaxBurst;
+ 			mult = ep->ss_ep_comp.bmAttributes & 0x3;
+ 		}

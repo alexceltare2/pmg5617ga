@@ -1,0 +1,15 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-28 15:05:14.322537760 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-28 15:08:50.006530134 +0800
+@@ -1130,8 +1130,8 @@
+ 
+ 			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_rx_pkt = sta_info.rxPackets;
+ 			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].ts_last_tx_pkt = sta_info.txPackets;
+-			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].rx_phy_rate = sta_info.lastRxRate;
+-			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].tx_phy_rate = sta_info.lastTxRate;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].rx_phy_rate = (sta_info.lastRxRate)>>10;
++			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].tx_phy_rate = (sta_info.lastTxRate)>>10;
+ 			    bsa_sta_stats->ieee80211_bsa_sta_info_var[idx].rssi_dbm = sta_info.rssi;
+ 				idx++;
+ 			}

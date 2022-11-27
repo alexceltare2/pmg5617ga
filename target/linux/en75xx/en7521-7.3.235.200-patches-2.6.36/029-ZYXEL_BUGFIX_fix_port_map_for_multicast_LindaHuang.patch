@@ -1,0 +1,179 @@
+Index: linux-2.6.36/include/linux/foe_hook.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/foe_hook.h	2017-04-26 03:23:04.179158458 +0800
++++ linux-2.6.36/include/linux/foe_hook.h	2017-04-27 16:45:44.476169318 +0800
+@@ -221,9 +221,13 @@
+ extern int (*ra_sw_nat_hook_xfer) (struct sk_buff *skb, const struct sk_buff *prev_p);
+ extern int (*ra_sw_nat_hook_foeentry) (void * inputvalue,int operation);
+ extern int (*ra_sw_nat_hook_is_alive_pkt)(unsigned int crsn);
++#if 1 //ZYXEL for port map
++extern int (*MT7530LanPortMap2Switch_hook)(int port);
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+ extern int (*MT7530LanPortMap2Switch_hook)(int port); 
+ #endif
++#endif
+ 
+ #ifdef TCSUPPORT_RA_HWNAT_ENHANCE_HOOK
+ extern int (*ra_sw_nat_hook_drop_packet) (struct sk_buff * skb);
+Index: linux-2.6.36/net/nat/foe_hook/hook.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/foe_hook/hook.c	2017-04-26 03:23:04.919158458 +0800
++++ linux-2.6.36/net/nat/foe_hook/hook.c	2017-04-27 16:45:44.552207319 +0800
+@@ -110,10 +110,15 @@
+ int  (*hwnat_set_multicast_speed_enable_hook)(int enable) = NULL;
+ int  (*multicast_flood_is_bind_hook)(int index) = NULL;
+ 
++#if 1 //ZYXEL for port map
++int (*MT7530LanPortMap2Switch_hook) (int port) = NULL;
++EXPORT_SYMBOL(MT7530LanPortMap2Switch_hook);
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+ int (*MT7530LanPortMap2Switch_hook) (int port) = NULL;
+ EXPORT_SYMBOL(MT7530LanPortMap2Switch_hook);
+ #endif
++#endif
+ 
+ #ifdef TCSUPPORT_MT7510_FE
+ void (*restore_offload_info_hook)(struct sk_buff *skb, struct port_info *pinfo, int magic) = NULL;
+Index: linux-2.6.36/net/bridge/br_forward.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_forward.c	2017-04-26 03:23:04.863158458 +0800
++++ linux-2.6.36/net/bridge/br_forward.c	2017-04-27 16:45:44.568215318 +0800
+@@ -47,9 +47,13 @@
+ int (*xpon_hgu_multicast_data_hook)(struct sk_buff *skb) = NULL;
+ EXPORT_SYMBOL(xpon_hgu_multicast_data_hook);
+ #endif
++#if 1 //ZYXEL for port map
++extern int (*MT7530LanPortMap2Switch_hook)(int port); 
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+ extern int (*MT7530LanPortMap2Switch_hook)(int port); 
+ #endif
++#endif
+ 
+ 
+ static int deliver_clone(const struct net_bridge_port *prev,
+@@ -328,6 +332,13 @@
+                 /*lan port*/
+                 if(port >= 0 && port <= 3)
+                 {
++#if 1 //ZYXEL for port map
++					if(MT7530LanPortMap2Switch_hook)
++					{
++						switch_port = MT7530LanPortMap2Switch_hook(port);
++					}
++					port = switch_port;
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+                     if(MT7530LanPortMap2Switch_hook)
+                     {
+@@ -335,6 +346,7 @@
+                     }
+                     port = switch_port;
+ #endif
++#endif
+                     mask |= 1 << port;
+                 }
+                 /*wifi port*/
+@@ -546,6 +558,13 @@
+             port = igmp_hwnat_get_port(prev);
+             if(port >= 0 && port <= 3)
+             {
++#if 1 //ZYXEL for port map
++				if(MT7530LanPortMap2Switch_hook)
++				{
++					switch_port = MT7530LanPortMap2Switch_hook(port);
++				}
++				port = switch_port;
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+                 if(MT7530LanPortMap2Switch_hook)
+                 {
+@@ -553,6 +572,7 @@
+                 }
+                 port = switch_port;
+ #endif
++#endif
+                 mask |= 1 << port;
+             }
+             else if(port >= HWNAT_WLAN_IF_BASE)
+@@ -695,6 +715,13 @@
+             port = igmp_hwnat_get_port(prev);
+             if(port >= 0 && port <= 3)
+             {
++#if 1 //ZYXEL for port map
++				if(MT7530LanPortMap2Switch_hook)
++                {
++                    switch_port = MT7530LanPortMap2Switch_hook(port);
++                }
++                port = switch_port;
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+                 if(MT7530LanPortMap2Switch_hook)
+                 {
+@@ -702,6 +729,7 @@
+                 }
+                 port = switch_port;
+ #endif
++#endif
+                 mask |= 1 << port;
+             }
+             else if(port >= HWNAT_WLAN_IF_BASE)
+Index: linux-2.6.36/net/bridge/br_multicast.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_multicast.c	2017-04-27 16:42:59.231679885 +0800
++++ linux-2.6.36/net/bridge/br_multicast.c	2017-04-27 16:45:44.572217318 +0800
+@@ -491,17 +491,10 @@
+ 	struct net_bridge_port_group *pg;
+ 		struct hlist_node *p, *n;
+ 
+-#if 1//ZYXEL workaround	
+-		//spin_lock(&br->multicast_lock);
+-		hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
+-			br_multicast_del_pg(br, pg);
+-		//spin_unlock(&br->multicast_lock);
+-#else
+ 		spin_lock(&br->multicast_lock);
+ 		hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
+ 			br_multicast_del_pg(br, pg);
+ 		spin_unlock(&br->multicast_lock);
+-#endif
+ #if 0
+ 	rcu_read_lock();
+ 	spin_lock(&br->multicast_lock);
+@@ -3190,6 +3183,13 @@
+         /*lan port*/
+         if(port >= 0 && port <= 3)
+         {
++#if 1 //ZYXEL for port map
++			if(MT7530LanPortMap2Switch_hook)
++            {
++                switch_port = MT7530LanPortMap2Switch_hook(port);
++            }
++            port = switch_port;
++#else
+ #if defined(TCSUPPORT_CPU_MT7520)
+             if(MT7530LanPortMap2Switch_hook)
+             {
+@@ -3197,6 +3197,7 @@
+             }
+             port = switch_port;
+ #endif
++#endif
+             mask |= 1 << port;
+         }
+         /*wifi port*/
+@@ -3615,10 +3616,10 @@
+ 		default:
+ 			break;	
+ 	}
+-#if 0//ZYXEL workaround
++
+ 	if(hwnat_set_rule_according_to_state_hook)
+ 		hwnat_set_rule_according_to_state_hook(entry->index,state,mask);
+-#endif	
++
+ 	entry->mask = mask;
+ 
+ 	return 0;

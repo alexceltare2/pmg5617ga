@@ -1,0 +1,67 @@
+Index: linux-2.6.36/drivers/net/ppp_generic.c
+===================================================================
+--- linux-2.6.36.orig/drivers/net/ppp_generic.c	2017-04-26 03:22:56.259158458 +0800
++++ linux-2.6.36/drivers/net/ppp_generic.c	2017-04-27 16:27:48.418409319 +0800
+@@ -71,6 +71,12 @@
+ #define MPHDRLEN	6	/* multilink protocol header length */
+ #define MPHDRLEN_SSN	4	/* ditto with short sequence numbers */
+ 
++#if defined(ZYXEL)
++#define FIELD0    4        /* ppp device number ppp0, ppp1, the third digit (max 16) */
++#define FIELD1    8        /* if 0, default mode, 1 vlan mux, 2 msc */
++#define FIELD2    19       /* if FILED1 is 0, add no extension, 1 add vlan id, 2 add conId for msc */
++#endif
++
+ /*
+  * An instance of /dev/ppp can be associated with either a ppp
+  * interface unit or a ppp channel.  In both cases, file->private_data
+@@ -2619,7 +2625,49 @@
+ 
+ 	/* Initialize the new ppp unit */
+ 	ppp->file.index = unit;
++
++#if defined(ZYXEL)
++   if (unit >= 0)
++   {
++      unsigned num[3]={0,0,0};
++      unsigned u=unit;
++
++     /* req_name will beused as ifname and  for
++     * num[1] == 0:  default connection mdoe: ppp0, ppp1...
++     * num[1] == 1:  vlanMux mode: ppp0.100, ppp1.200...
++     * num[1] == 2:  msc (multiple service mode) ppp0_1, ppp1_3...
++     * num[1] == 3:  pppoa0, pppoa1...
++     * num[1] == 4:  pppowwan
++     */
++      num[0] = u<<(32-(FIELD2+FIELD1+FIELD0))>>(32-FIELD0);
++      num[1] = u<<(32-(FIELD2+FIELD1))>>(32-FIELD1);
++      num[2] = u<<(32-(FIELD2))>>(32-FIELD2);
++      if (num[1] == 0)
++      {
++         sprintf(dev->name, "ppp%d", num[0]);
++      }
++      else if (num[1] == 1) /* vlan mux */
++      {
++         sprintf(dev->name, "ppp%d.%d", num[0], num[2]);
++      }
++      else if (num[1] == 2) /* msc */
++      {
++         sprintf(dev->name, "ppp%d_%d", num[0], num[2]);
++      }
++      else if (num[1] == 3) /* pppoa */
++      {
++         sprintf(dev->name, "pppoa%d", num[0]);
++      }
++#if 1 /* support pppowwan */
++      else if (num[1] == 4){ /* pppowwan */
++         sprintf(dev->name, "pppowwan%d", num[0]);
++      }
++#endif
++   }
++#else
+ 	sprintf(dev->name, "ppp%d", unit);
++#endif
++
+ 
+ 	ret = register_netdev(dev);
+ 	if (ret != 0) {

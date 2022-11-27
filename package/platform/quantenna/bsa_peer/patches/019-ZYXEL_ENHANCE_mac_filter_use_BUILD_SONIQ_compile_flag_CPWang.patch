@@ -1,0 +1,80 @@
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-05-12 15:48:32.246942999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-05-12 16:00:33.978791107 +0800
+@@ -23,7 +23,7 @@
+ #include <sys/prctl.h>
+ #include "bsa_peer_common.h"
+ 
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #include "zcfg_eid.h"
+ #include "zcfg_msg.h"
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+@@ -479,7 +479,7 @@
+ 
+ }
+ 
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ /*!
+  *  send mac filter request to wifi daemon
+  *
+@@ -570,7 +570,7 @@
+ 
+ int bsa_brcm_set_bsa_status(void *priv, int index, uint8_t status)
+ {
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ 	if (index < 0) {
+         fprintf(stderr, "%s line %d, %s(), ERROR: invalid index = %d\n",
+@@ -1159,7 +1159,7 @@
+ 
+ int bsa_brcm_update_mac_filter_table(void *priv, int index, void *cmd_info)
+ {
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ 	struct ieee80211_bsa_mac_filter     *bsa_mac_filter = (void *)cmd_info;
+ 	char                                cmd;
+@@ -1202,7 +1202,7 @@
+ #else /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ 	struct bsa_peer_entity *bsa_peer = priv;
+-	struct ieee80211_bsa_mac_filter *bsa_mac_filter = (void *)cmd_info;
++	struct bsa_cmd_macfilter_ds *bsa_mac_filter = (void *)cmd_info;
+ 	struct iwreq iwr;
+ 	int retval = 0;
+ 
+@@ -1218,7 +1218,7 @@
+ 	strncpy(iwr.ifr_name, bsa_conf_info[index].ifname, IFNAMSIZ);
+ 	iwr.u.data.flags = SIOCDEV_SUBIO_UPDATE_MACFILTER_LIST;
+ 	iwr.u.data.pointer = bsa_mac_filter;
+-	iwr.u.data.length = sizeof(struct ieee80211_bsa_mac_filter);
++	iwr.u.data.length = sizeof(struct bsa_cmd_macfilter_ds);
+ 
+ 	if (ioctl(bsa_peer->ioctl_sock, IEEE80211_IOCTL_EXT, &iwr) < 0) {
+ 		perror("ioctl[IEEE80211_IOCTL_EXT]");
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-05-12 15:48:32.178942999 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-05-12 16:02:50.708605159 +0800
+@@ -59,7 +59,7 @@
+ #include "bsa_peer_event.h"
+ #include "bsa_peer_entity.h"
+ 
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #include "zcfg_eid.h"
+ #include "zcfg_msg.h"
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+@@ -207,7 +207,7 @@
+ 
+ 	printf("bsa_peer(%s-%s) started\n", BSA_VERSION, BSA_SUBVERSION);
+ 
+-#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#ifdef BUILD_SONIQ /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+     zcfgEidInit(ZCFG_EID_BSA_PEER, "bsa_peer");
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 

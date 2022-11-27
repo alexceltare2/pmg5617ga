@@ -1,0 +1,1132 @@
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-03-29 14:01:05.028276918 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-03-29 14:01:20.800165571 +0800
+@@ -1,9 +1,9 @@
+ #common
+-ifneq ($(CONFIG_BIG_ENDIAN),)
+-CFLAGS += -IBIG_ENDIAN
+-else
+-CFLAGS += -ILITTLE_ENDIAN
+-endif
++#ifneq ($(CONFIG_BIG_ENDIAN),)
++#CFLAGS += -IBIG_ENDIAN
++#else
++#CFLAGS += -ILITTLE_ENDIAN
++#endif
+ 
+ #BRCM
+ IMPL=$(strip $(shell readlink $(BCM_BUILD_DIR)/bcmdrivers/broadcom/net/wl/bcm9$(BRCM_CHIP) | sed 's/[^0-9]//g'))
+@@ -26,20 +26,20 @@
+ 
+ #QTN
+ CFLAGS += -I../include/
+-CFLAGS += -I$(STAGING_DIR)/usr/include/libqcsapi_client/
+-CFLAGS += -I$(STAGING_DIR)/usr/include/libqcsapi_client/qtn/
+-CFLAGS += -I$(SDK_DIR)/drivers/include/shared -I$(SDK_DIR)/include
++
+ #CFLAGS += -Wall -Werror
+ CFLAGS += -DCONFIG_QTN_BSA_SUPPORT
++CFLAGS += -ljson
+ 
+ 
+-BSAPEEROBJS = bsa_peer_entity.o bsa_driver_qtn.o bsa_peer_event.o ../common/bsa_debug.o
++BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o
+ FASTSTEERSTAOBJS = fast_steer_sta.o
+ 
+-LIBOBJS = $(BSAPEEROBJS) $(FASTSTEERSTAOBJS)
++LIBOBJS = $(BSAPEEROBJS)
++#LIBOBJS += $(FASTSTEERSTAOBJS)
+ all: clean $(LIBOBJS)
+ 	$(CC) -o bsa_peer $(CFLAGS) $(BSAPEEROBJS)
+-	$(CC) -o fast_steer_sta $(CFLAGS) $(FASTSTEERSTAOBJS)
++	#$(CC) -o fast_steer_sta $(CFLAGS) $(FASTSTEERSTAOBJS)
+ 	#install -D -m 755 bsa_peer $(TARGET_DIR)/usr/sbin/
+ 	#install -D -m 755 fast_steer_sta $(TARGET_DIR)/usr/sbin/
+ 	#install -D -m 644 bsa_conf.txt $(TARGET_DIR)/etc/
+Index: bsa-1.0.1/bsa_peer/bsa_driver.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver.h	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver.h	2017-03-29 14:01:05.044276803 +0800
+@@ -50,6 +50,7 @@
+ 
+ enum vendor_id_num {
+ 	BSA_VENDOR_ID_QTN_PEARL = 0x0001,
++	BSA_VENDOR_ID_BRCM_PEARL = 0x0002,
+ };
+ 
+ enum {
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-03-29 14:01:05.044276803 +0800
+@@ -0,0 +1,530 @@
++#include "bsa_peer_event.h"
++#include "bsa_driver.h"
++#include "bsa_driver_brcm.h"
++#include "bsa_wireless_copy.h"
++#include <json/json.h>
++
++extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
++
++int bsa_brcm_get_vendorid(void *priv, int index, void *cmd_info)
++{
++	struct  bsa_peer_entity *bsa_peer = priv;
++	uint16_t *vendor_id = (void *)cmd_info;
++	const struct bsa_driver_ops *drv_ops = bsa_conf_info[index].bsa_peer_driver_cb;
++
++	if (!cmd_info)
++		return -EINVAL;
++
++	if (!bsa_peer)
++		return -EINVAL;
++
++	if (!drv_ops)
++		return -EINVAL;
++
++	*vendor_id = drv_ops->vendor_id;
++	return 0;
++}
++
++void bsa_sub_cmd_process(const char *ifname, int16_t sub_cmd, struct bsa_drv_intf_info* drv_event_info)
++{
++	char cmd[100] = {0};
++	//FILE *fp = NULL;
++	static char *file_path = "/tmp/.cmd_result";
++	const char *param_tmp = NULL;
++	json_object *intf_info_Jobj = NULL;
++	json_object *htcap_Jobj = NULL;
++	json_object *htop_Jobj = NULL;
++	struct bsa_drv_gen_intf_info *drv_event_gen_info = NULL;
++	struct bsa_drv_intf_fat_info *drv_event_fat_info = NULL;
++	int i = 0;
++	char buf[64] = {0};
++	char mac_str[3] = {0};
++	char *end_ptr = NULL;
++
++	switch(sub_cmd) {
++		case BSA_INTF_INFO_GEN_CMD:
++		{
++			sprintf(cmd, "zywlctl -i %s get_intf_info_gen > %s", ifname, file_path);
++			system(cmd);
++			intf_info_Jobj = json_object_from_file(file_path);
++			printf("%s: %s\n", __FUNCTION__, json_object_to_json_string(intf_info_Jobj));
++
++			drv_event_gen_info = &drv_event_info->u.bsa_drv_gen_intf_info_var;
++			param_tmp = json_object_get_string(json_object_object_get(intf_info_Jobj, "ifname"));
++			memcpy(drv_event_gen_info->ifname, param_tmp, IFNAMSIZ);
++			param_tmp = json_object_get_string(json_object_object_get(intf_info_Jobj, "ssid"));
++			memcpy(drv_event_gen_info->ssid, param_tmp, MAX_SSID_LEN);
++			param_tmp = json_object_get_string(json_object_object_get(intf_info_Jobj, "bssid"));
++			for(i=0; i<ETH_ALEN; i++) {
++				memcpy(mac_str, param_tmp+(i*2)+i, 2);
++				mac_str[2] = '\0';
++				drv_event_gen_info->bssid[i] = (unsigned char)strtol(mac_str, NULL, 16);
++			}
++			drv_event_gen_info->mdid = json_object_get_int(json_object_object_get(intf_info_Jobj, "mdid"));
++			drv_event_gen_info->ssid_len = json_object_get_int(json_object_object_get(intf_info_Jobj, "ssid_len"));
++			drv_event_gen_info->ifname_size = json_object_get_int(json_object_object_get(intf_info_Jobj, "ifname_size"));
++			drv_event_gen_info->channel = json_object_get_int(json_object_object_get(intf_info_Jobj, "channel"));
++			drv_event_gen_info->band = json_object_get_int(json_object_object_get(intf_info_Jobj, "band"));
++			drv_event_gen_info->opclass = json_object_get_int(json_object_object_get(intf_info_Jobj, "opclass"));
++			drv_event_gen_info->phytype = json_object_get_int(json_object_object_get(intf_info_Jobj, "phytype"));
++			drv_event_gen_info->drivercap = json_object_get_int(json_object_object_get(intf_info_Jobj, "drivercap"));
++			drv_event_gen_info->capinfo = json_object_get_int(json_object_object_get(intf_info_Jobj, "capinfo"));
++			drv_event_gen_info->beacon_interval = json_object_get_int(json_object_object_get(intf_info_Jobj, "beacon_interval"));
++
++			/** 802.11n HT Capability IE **/
++			htcap_Jobj = json_object_object_get(intf_info_Jobj, "htcap");
++			if(htcap_Jobj) {
++				drv_event_gen_info->htcap.hc_id = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_id"));
++				drv_event_gen_info->htcap.hc_len = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_len"));
++				drv_event_gen_info->htcap.hc_cap[0] = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_cap_0"));
++				drv_event_gen_info->htcap.hc_cap[1] = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_cap_1"));
++				drv_event_gen_info->htcap.hc_ampdu = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_ampdu"));
++				for(i=0; i<sizeof(drv_event_gen_info->htcap.hc_mcsset); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "hc_mcsset_%d", i);
++					drv_event_gen_info->htcap.hc_mcsset[i] = json_object_get_int(json_object_object_get(htcap_Jobj, buf));
++				}
++				for(i=0; i<sizeof(drv_event_gen_info->htcap.hc_extcap); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "hc_extcap_%d", i);
++					drv_event_gen_info->htcap.hc_extcap[i] = json_object_get_int(json_object_object_get(htcap_Jobj, buf));
++				}
++				for(i=0; i<sizeof(drv_event_gen_info->htcap.hc_txbf); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "hc_txbf_%d", i);
++					drv_event_gen_info->htcap.hc_txbf[i] = json_object_get_int(json_object_object_get(htcap_Jobj, buf));
++				}
++				drv_event_gen_info->htcap.hc_antenna = json_object_get_int(json_object_object_get(htcap_Jobj, "hc_antenna"));
++			}
++
++			/** 802.11n HT Information IE **/
++			htop_Jobj = json_object_object_get(intf_info_Jobj, "htop");
++			if(htop_Jobj) {
++				drv_event_gen_info->htop.hi_id = json_object_get_int(json_object_object_get(htop_Jobj, "hi_id"));
++				drv_event_gen_info->htop.hi_len = json_object_get_int(json_object_object_get(htop_Jobj, "hi_len"));
++				drv_event_gen_info->htop.hi_ctrlchannel = json_object_get_int(json_object_object_get(htop_Jobj, "hi_ctrlchannel"));
++				drv_event_gen_info->htop.hi_byte1 = json_object_get_int(json_object_object_get(htop_Jobj, "hi_byte1"));
++				drv_event_gen_info->htop.hi_byte2 = json_object_get_int(json_object_object_get(htop_Jobj, "hi_byte2"));
++				drv_event_gen_info->htop.hi_byte3 = json_object_get_int(json_object_object_get(htop_Jobj, "hi_byte3"));
++				drv_event_gen_info->htop.hi_byte4 = json_object_get_int(json_object_object_get(htop_Jobj, "hi_byte4"));
++				drv_event_gen_info->htop.hi_byte5 = json_object_get_int(json_object_object_get(htop_Jobj, "hi_byte5"));
++				for(i=0; i<sizeof(drv_event_gen_info->htop.hi_basicmcsset); i++) {
++					memset(buf, 0, sizeof(buf));
++					sprintf(buf, "hi_basicmcsset_%d", i);
++					drv_event_gen_info->htop.hi_basicmcsset[i] = json_object_get_int(json_object_object_get(htop_Jobj, buf));
++				}
++			}
++
++			drv_event_info->cmd_spec = sub_cmd;
++
++			json_object_put(intf_info_Jobj);
++			break;
++		}
++		case BSA_INTF_INFO_FAT_CMD:
++		{
++			drv_event_fat_info = &drv_event_info->u.bsa_drv_intf_fat_info_var;
++			break;
++		}
++		default:
++			break;
++	}
++
++}
++
++int bsa_brcm_set_bsa_status(void *priv, int index, uint8_t status)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	int retval = 0;
++
++	printf("[%s]: TODO\n", __FUNCTION__);
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Set BSA status to driver");
++
++	if ((priv == NULL) || (index == -1))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	memset(&iwr, 0, sizeof(iwr));
++	strncpy(iwr.ifr_name, bsa_conf_info[index].ifname, IFNAMSIZ);
++	iwr.u.data.flags = SIOCDEV_SUBIO_SET_BSA_STATUS;
++	sprintf(buff, "%d", status);
++	iwr.u.data.pointer = (caddr_t)buff;
++	iwr.u.data.length = sizeof(buff);
++
++	if (ioctl(bsa_peer->ioctl_sock, IEEE80211_IOCTL_EXT, &iwr) < 0) {
++		perror("ioctl[IEEE80211_IOCTL_EXT]");
++		retval = -errno;
++	}
++#endif
++
++	return retval;
++}
++
++int bsa_brcm_get_intf_status(void *priv, int index)
++{
++	int retval = 0;
++	struct  bsa_peer_entity *bsa_peer = priv;
++	struct bsa_drv_intf_status *drv_intf_status = NULL;
++	char *event_buff = NULL;
++	int tmpInt = 0;
++
++	char sysCmd[50], *tmp, fileName[50];
++	FILE *file = NULL;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: priv=%p, index=%d", priv, index);
++	if ((priv == NULL) || (index == -1))
++		return -EINVAL;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: sock=%d", bsa_peer->ioctl_sock);
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Get interface status for ifname %s",
++			bsa_conf_info[index].ifname);
++
++	event_buff = (char *)calloc(1, BSA_EVENT_BUFF_SIZE);
++	if (!event_buff) {
++		bsa_printf(BSA_DEBUG, "Alloc failed");
++		return -ENOMEM;
++	}
++	drv_intf_status = (void*)event_buff;
++
++	sprintf(fileName, "/tmp/%s_radio_st", bsa_conf_info[index].ifname);
++	sprintf(sysCmd, "wlctl -i %s isup > %s", bsa_conf_info[index].ifname, fileName);
++	system(sysCmd);
++
++	if((file = fopen(fileName , "r")) != NULL) {
++		if(fgets(sysCmd , sizeof(sysCmd)-1 , file) != NULL) {
++			tmpInt = atoi(sysCmd);
++			if(tmpInt == 1) {
++				drv_intf_status->status = BSA_INTF_STATUS_UP;
++			}
++			else {
++				drv_intf_status->status = BSA_INTF_STATUS_DOWN;
++			}
++		}
++		else {
++			drv_intf_status->status = BSA_INTF_STATUS_INVALID;
++		}
++		fclose(file);
++		unlink(fileName);
++	}
++
++	strncpy((char *)drv_intf_status->ifname, bsa_conf_info[index].ifname, IFNAMSIZ);
++	drv_intf_status->ifname_size = strlen((char *)drv_intf_status->ifname);
++
++	retval = bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_STATUS, bsa_conf_info[index].bssid,
++						(uint8_t *)event_buff, sizeof(struct bsa_drv_intf_status));
++
++	if (retval) {
++		bsa_printf(BSA_DEBUG, "send event failed");
++	}
++	free(event_buff);
++
++	return retval;
++}
++
++int bsa_brcm_get_intf_info(void *priv, int index, uint32_t cmd_spec)
++{
++	struct  bsa_peer_entity *bsa_peer = priv;
++	struct bsa_drv_intf_info *drv_event_info = NULL;
++	struct bsa_drv_gen_intf_info *drv_event_gen_info = NULL;
++	struct bsa_drv_intf_fat_info *drv_event_fat_info = NULL;
++	char *event_buff = NULL;
++	int retval = 0;
++
++	if ((priv == NULL) || ( index == -1))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Get interface info for ifname %s",
++						bsa_conf_info[index].ifname);
++
++	event_buff = (char *)calloc(1, BSA_EVENT_BUFF_SIZE);
++	if (!event_buff)
++		return -ENOMEM;
++
++	if (cmd_spec == BSA_INTF_INFO_GEN_CMD) {
++		drv_event_info = (void *)event_buff;
++		bsa_sub_cmd_process(bsa_conf_info[index].ifname, cmd_spec, drv_event_info);
++
++	}
++	else if (cmd_spec == BSA_INTF_INFO_FAT_CMD) {
++#if 0
++		bsa_sub_cmd_process(bsa_conf_info[index].ifname, cmd_spec);
++
++		drv_event_info = (void *)event_buff;
++		drv_event_fat_info = &drv_event_info->u.bsa_drv_intf_fat_info_var;
++		drv_event_fat_info->channel = bsa_intf_fat_req.channel;
++		drv_event_fat_info->band = bsa_intf_fat_req.band;
++		drv_event_fat_info->avg_fat = bsa_intf_fat_req.avg_fat;
++		drv_event_info->cmd_spec = cmd_spec;
++#endif
++	}
++	else {
++		bsa_printf(BSA_ERROR, "BSA_PEER: Unknown interface info command");
++		free(event_buff);
++		return -ENOMEM;
++	}
++	bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_INFO, bsa_conf_info[index].bssid, (uint8_t *)event_buff,
++			sizeof(struct bsa_evt_intf_info));
++
++	return retval;
++}
++
++int bsa_brcm_deauth_client(void *priv, int index, void *cmd_info)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	struct bsa_cmd_deauth_ds *deauth_sta_info = NULL;
++	int retval = 0;
++	char buf[64] = {0};
++
++	if ((priv == NULL) || (cmd_info == NULL))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++	deauth_sta_info = (void *)cmd_info;
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Send deauth for station "MACSTR"; ifname =%s to driver",
++			MAC2STR(deauth_sta_info->sta_mac), bsa_conf_info[index].ifname);
++
++	sprintf(buf, "zywlctl -i %s disassociate %s", bsa_conf_info[index].ifname, deauth_sta_info->sta_mac);
++	system(buf);
++
++	return retval;
++}
++
++int bsa_brcm_start_monitor(void *priv, int index, uint32_t period, uint32_t duty_cycle)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	uint32_t value = (((period & 0xffff) << 16) | ((duty_cycle & 0xff) << 8) | (0xFF & 0x1));
++	int retval = 0;
++
++	if (priv == NULL)
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	retval = bsa_send_driver_iwpriv(bsa_peer, IEEE80211_PARAM_NAC_MONITOR_MODE, value, index);
++	if(retval >= 0) {
++		value = (1 << IEEE80211_SCS_VALUE_S);
++		value |= ((IEEE80211_SCS_SET_NAC_MONITOR_MODE & IEEE80211_SCS_COMMAND_M) << IEEE80211_SCS_COMMAND_S);
++		retval = bsa_send_driver_iwpriv(bsa_peer, IEEE80211_PARAM_SCS, value, index);
++	}
++#endif
++	return retval;
++}
++
++int bsa_brcm_stop_monitor(void *priv, int index)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	uint32_t value = 0;
++	int retval = 0;
++
++	if (priv == NULL)
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	retval = bsa_send_driver_iwpriv(bsa_peer, IEEE80211_PARAM_NAC_MONITOR_MODE, value, index);
++	value = (0 << IEEE80211_SCS_VALUE_S);
++	value |= ((IEEE80211_SCS_SET_NAC_MONITOR_MODE & IEEE80211_SCS_COMMAND_M) << IEEE80211_SCS_COMMAND_S);
++	retval = bsa_send_driver_iwpriv(bsa_peer, IEEE80211_PARAM_SCS, value, index);
++#endif
++	return retval;
++}
++
++#define MAX_SEND_ENTRIES 32
++
++int bsa_brcm_get_neighbour_stats(void *priv, int index, void *cmd_info)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	struct ieee80211_nac_stats_report *report = NULL, *new_report;
++	int retval = 0, entry, entries_left;
++
++	if ((priv == NULL) || (cmd_info == NULL))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	report = (struct ieee80211_nac_stats_report *)calloc (1, sizeof (struct ieee80211_nac_stats_report));
++
++	if (!report)
++		return -ENOMEM;
++
++	if (bsa_sub_ioctl_command(bsa_peer->ioctl_sock, bsa_conf_info[index].ifname,
++				SIOCDEV_SUBIO_GET_NAC_STATS, report,
++				sizeof(struct ieee80211_nac_stats_report))) {
++		free (report);
++		return -EINVAL;
++	}
++
++	if (report->nac_entries) {
++		new_report = report;
++		entries_left = report->nac_entries;
++		do {
++			entry = (entries_left < MAX_SEND_ENTRIES ? entries_left : MAX_SEND_ENTRIES);
++			entries_left -= entry;
++			new_report->nac_entries = entry;
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_STA_NONASSOC_STATS, bsa_conf_info[index].bssid,
++							(uint8_t *)new_report, sizeof(struct ieee80211_nac_stats_report));
++			new_report = (struct ieee80211_nac_stats_report *)(((char *)new_report)+sizeof(struct nac_info_entry)*entry);
++		} while(entries_left>0);
++	}
++
++	free (report);
++#endif
++	return retval;
++}
++
++int bsa_brcm_get_client_stats(void *priv, int index, void *cmd_info)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	struct ieee80211_bsa_sta_stats *bsa_sta_stats = NULL;
++	int retval = 0;
++
++	if ((priv == NULL) || (cmd_info == NULL))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	bsa_sta_stats = (struct ieee80211_bsa_sta_stats *)calloc (1, sizeof (struct ieee80211_bsa_sta_stats));
++
++	if (!bsa_sta_stats)
++		return -ENOMEM;
++
++	memcpy(bsa_sta_stats->sta_mac, (uint8_t *)cmd_info, ETH_ALEN);
++	bsa_printf(BSA_DEBUG, "BSA_PEER: get sta clients stats for ifname=%s client "MACSTR"",\
++			bsa_conf_info[index].ifname, MAC2STR(bsa_sta_stats->sta_mac));
++
++	if (bsa_sub_ioctl_command(bsa_peer->ioctl_sock, bsa_conf_info[index].ifname,
++				SIOCDEV_SUBIO_GET_BSA_STA_STATS, bsa_sta_stats,
++				sizeof(struct ieee80211_bsa_sta_stats))) {
++		free (bsa_sta_stats);
++		return -EINVAL;
++	}
++
++	if (bsa_sta_stats->num_sta) {
++		bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_STA_PHY_STATS, bsa_conf_info[index].bssid
++			, (uint8_t *)bsa_sta_stats, sizeof(struct ieee80211_bsa_sta_stats));
++	}
++
++	free (bsa_sta_stats);
++#endif
++	return retval;
++}
++
++int bsa_brcm_update_mac_filter_table(void *priv, int index, void *cmd_info)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++	struct ieee80211_bsa_mac_filter *bsa_mac_filter = (void *)cmd_info;
++	struct iwreq iwr;
++	int retval = 0;
++
++	if ((priv == NULL) || (cmd_info == NULL))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: set_mac_filter ifname=%s", bsa_conf_info[index].ifname);
++#if 0
++	memset(&iwr, 0, sizeof(iwr));
++	strncpy(iwr.ifr_name, bsa_conf_info[index].ifname, IFNAMSIZ);
++	iwr.u.data.flags = SIOCDEV_SUBIO_UPDATE_MACFILTER_LIST;
++	iwr.u.data.pointer = bsa_mac_filter;
++	iwr.u.data.length = sizeof(struct ieee80211_bsa_mac_filter);
++
++	if (ioctl(bsa_peer->ioctl_sock, IEEE80211_IOCTL_EXT, &iwr) < 0) {
++		perror("ioctl[IEEE80211_IOCTL_EXT]");
++		retval = -errno;
++		bsa_printf(BSA_WARN, "BSA_PEER: IOCTL operation failed retval = %d", retval);
++	}
++#endif
++	return retval;
++}
++
++int bsa_brcm_send_btm_req(void *priv, int index, void *cmd_info)
++{
++	struct bsa_peer_entity *bsa_peer = priv;
++//	struct ieee80211_bsa_btm_req_frm *bsa_btm_rq = (struct ieee80211_bsa_btm_req_frm *)cmd_info;
++//	struct ieee80211_bsa_btm_req_frm bsa_btm_req_frm;
++	struct iwreq iwr;
++	int retval = 0;
++
++	if ((priv == NULL) || (cmd_info == NULL))
++		return -EINVAL;
++
++	if (bsa_peer->ioctl_sock < 0)
++		return -EINVAL;
++
++#if 0
++	memcpy(bsa_btm_req_frm.sta_mac, bsa_btm_rq->sta_mac, ETH_ALEN);
++	bsa_btm_req_frm.dis_assoc_timer = (bsa_btm_rq->dis_assoc_timer);
++	bsa_btm_req_frm.req_mode = bsa_btm_rq->req_mode;
++	bsa_btm_req_frm.val_intvl = bsa_btm_rq->val_intvl;
++	memcpy(bsa_btm_req_frm.bssid, bsa_btm_rq->bssid, ETH_ALEN);
++	bsa_btm_req_frm.bssid_info = (bsa_btm_rq->bssid_info);
++	bsa_btm_req_frm.opclass = bsa_btm_rq->opclass;
++	bsa_btm_req_frm.channel = bsa_btm_rq->channel;
++	bsa_btm_req_frm.phytype = bsa_btm_rq->phytype;
++	bsa_btm_req_frm.subele_len = bsa_btm_rq->subele_len;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: send btm req frme ifname=%s", bsa_conf_info[index].ifname);
++	memset(&iwr, 0, sizeof(iwr));
++	strncpy(iwr.ifr_name, bsa_conf_info[index].ifname, IFNAMSIZ);
++	iwr.u.data.flags = SIOCDEV_SUBIO_SEND_BTM_REQ_FRM;
++	iwr.u.data.pointer = &bsa_btm_req_frm;
++	iwr.u.data.length = sizeof(struct ieee80211_bsa_btm_req_frm);
++
++	if (ioctl(bsa_peer->ioctl_sock, IEEE80211_IOCTL_EXT, &iwr) < 0) {
++		perror("ioctl[IEEE80211_IOCTL_EXT]");
++		retval = -errno;
++		bsa_printf(BSA_WARN, "BSA_PEER: IOCTL operation failed retval = %d", retval);
++	}
++#endif
++	return retval;
++}
++
++int bsa_brcm_get_associated_stations_info(void *priv, int index)
++{
++	int retval = 0;
++
++	printf("[%s]: TODO\n", __FUNCTION__);
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Get interface info for ifname %s",
++			bsa_conf_info[index].ifname);
++
++	return retval;
++}
++
++const struct bsa_driver_ops bsa_driver_brcm_ops = {
++	.vendor_id = BSA_VENDOR_ID_BRCM_PEARL,
++	.desc = "BRCM PEARL",
++	.set_bsa_status = bsa_brcm_set_bsa_status,
++	.get_bsa_vendorid = bsa_brcm_get_vendorid,
++	.deauth_client = bsa_brcm_deauth_client,
++	.update_mac_filter_table = bsa_brcm_update_mac_filter_table,
++	.get_intf_status = bsa_brcm_get_intf_status,
++	.get_intf_info = bsa_brcm_get_intf_info,
++	.get_client_stats = bsa_brcm_get_client_stats,
++	.get_neighbour_info = bsa_brcm_get_neighbour_stats,
++	.start_monitor = bsa_brcm_start_monitor,
++	.stop_monitor = bsa_brcm_stop_monitor,
++	.get_associated_clients = bsa_brcm_get_associated_stations_info,
++	.send_btm_req = bsa_brcm_send_btm_req,
++};
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-03-29 14:01:05.048276775 +0800
+@@ -0,0 +1,209 @@
++#ifndef __BSA_DRIVER_BRCM_H__
++#define __BSA_DRIVER_BRCM_H__
++
++#include "bsa_includes.h"
++#include "bsa_common_defs.h"
++#include "bsa_peer_entity.h"
++
++#define QTN_DRV_MLME_DISASSOC		2
++#define QTN_DRV_MLME_DEAUTH		3
++#define BSA_EVENT_BUFF_SIZE		250
++
++#define BSA_PROBE_EVENT_REQ		1
++#define BSA_CONNECT_COMPLETE_EVENT	2
++
++enum interface_status {
++	BSA_INTF_STATE_RUNNING	= 1,
++	BSA_INTF_STATE_UP	= 2,
++	BSA_INTF_STATE_DELETED	= 3,
++	BSA_INTF_STATE_INVALID	= 4,
++};
++
++struct bsa_drv_peer_event_data {
++	char name[32];
++	uint8_t bssid[ETH_ALEN];
++	uint16_t event_id;
++	uint32_t offset;
++}__attribute__((packed));
++
++/*
++ * 802.11n HT Capability IE
++ */
++struct ieee80211_ie_htcap {
++	uint8_t	hc_id;			/* element ID */
++	uint8_t	hc_len;			/* length in bytes */
++	uint8_t	hc_cap[2];			/* HT capabilities */
++	uint8_t	hc_ampdu;		/* A-MPDU parameters */
++	uint8_t	hc_mcsset[16];		/* supported MCS set */
++	uint8_t	hc_extcap[2];		/* extended HT capabilities */
++	uint8_t	hc_txbf[4];		/* txbf capabilities */
++	uint8_t	hc_antenna;		/* antenna capabilities */
++}__attribute__((packed));
++
++/*
++ * 802.11n HT Information IE
++ */
++struct ieee80211_ie_htinfo {
++	uint8_t	hi_id;			/* element ID */
++	uint8_t	hi_len;			/* length in bytes */
++	uint8_t	hi_ctrlchannel;	/* control channel */
++	uint8_t	hi_byte1;		/* ht ie byte 1 */
++	uint8_t	hi_byte2;		/* ht ie byte 2 */
++	uint8_t	hi_byte3;		/* ht ie byte 3 */
++	uint8_t	hi_byte4;		/* ht ie byte 4 */
++	uint8_t	hi_byte5;		/* ht ie byte 5 */
++	uint8_t	hi_basicmcsset[16];	/* basic MCS set */
++}__attribute__((packed));
++
++/*
++ * 802.11ac VHT Capabilities element
++ */
++struct ieee80211_ie_vhtcap {
++	u_int8_t	vht_id;			/* element ID */
++	u_int8_t	vht_len;		/* length in bytes */
++	u_int8_t	vht_cap[4];		/* VHT capabilities info */
++	u_int8_t	vht_mcs_nss_set[8];	/* supported MSC and NSS set */
++}__attribute__((packed));
++
++/* VHT capabilities options */
++/*
++ * 802.11ac VHT Operation element
++ */
++struct ieee80211_ie_vhtop {
++	u_int8_t	vhtop_id;		/* element ID */
++	u_int8_t	vhtop_len;		/* length in bytes */
++	u_int8_t	vhtop_info[3];		/* VHT Operation info */
++	u_int8_t	vhtop_bvhtmcs[2];	/* basic VHT MSC and NSS set */
++}__attribute__((packed));
++
++struct bsa_drv_intf_info {
++	union {
++		struct bsa_drv_gen_intf_info {
++			uint8_t ifname[IFNAMSIZ];
++			uint8_t ssid[MAX_SSID_LEN];
++			uint8_t bssid[ETH_ALEN];
++			uint16_t mdid;
++			uint8_t ssid_len;
++			uint8_t ifname_size;
++			uint8_t channel;
++			uint8_t band;
++			uint16_t opclass;
++			uint8_t phytype;
++			uint8_t drivercap;
++			uint16_t capinfo;
++			uint16_t beacon_interval;
++			struct ieee80211_ie_htcap htcap;
++			struct ieee80211_ie_htinfo htop;
++			struct ieee80211_ie_vhtcap vhtcap;
++			struct ieee80211_ie_vhtop vhtop;
++		} bsa_drv_gen_intf_info_var;
++		struct  bsa_drv_intf_fat_info {
++			uint8_t channel;
++			uint8_t band;
++			uint16_t avg_fat;
++		} bsa_drv_intf_fat_info_var;
++	}u;
++	uint8_t cmd_spec;
++}__attribute__((packed));
++
++struct bsa_drv_intf_status {
++	uint8_t ifname_size;
++	uint8_t ifname[IFNAMSIZ];
++	uint32_t status;
++}__attribute__((packed));
++
++struct bsa_drv_probe_event_info {
++	uint8_t sta_mac[ETH_ALEN];
++	uint16_t rss;
++	int32_t rssi;
++	uint16_t max_phy_rate;
++	uint16_t reserved;
++	uint16_t curr_band;
++	uint16_t channel;
++	uint16_t band_width;
++	uint16_t bss_transition;
++	uint8_t vht_capab;
++	uint8_t mu_mimo_capab;
++	uint16_t cookie_len;
++	void *cookie;
++}__attribute__((packed));
++
++struct  bsa_drv_connect_compl_event_info {
++	uint8_t sta_mac[ETH_ALEN];
++	uint16_t reserved;
++	int32_t rssi;
++	uint16_t rss;
++	uint16_t max_phy_rate;
++	uint16_t curr_band;
++	uint16_t channel;
++	uint32_t band_width;
++	uint8_t bss_transition_support;
++	uint8_t vht_capab;
++	uint8_t mu_mimo_capab;
++};
++
++struct bsa_evt_sta_disconnect_event_data  {
++	uint8_t sta_mac[ETH_ALEN];
++	uint16_t reason_code;
++	uint8_t direction;
++}__attribute__((packed));
++
++struct bsa_drv_deauth_event_info {
++	uint8_t sta_mac[ETH_ALEN];
++	uint8_t bss_peer_deauth;        /*0: if bss generated deauth event,
++                                                  1: if peer generated deauth event */
++	uint16_t reason_code;
++}__attribute__((packed));
++
++struct bsa_ieee80211req_mlme {
++	uint8_t bsa_cmd;                  /* operation to perform */
++	uint16_t bsa_reason_code;             /* 802.11 reason code */
++	uint8_t bsa_sta_mac[ETH_ALEN];
++};
++
++enum bsa_mac_filter_mode {
++	MAC_FILTER_DENY_MAC = 0,
++	MAC_FILTER_ALLOW_MAC = 1,
++};
++
++struct bsa_cmd_intf_ds {
++	uint8_t ifname_size;
++	uint8_t ifname[BSA_IFNAMSIZ];
++	uint32_t cmd_specifier;
++}__attribute__((packed));
++
++struct bsa_cmd_deauth_ds {
++	uint8_t sta_mac[ETH_ALEN];
++	uint16_t reason_code;
++}__attribute__((packed));
++
++struct bsa_cmd_macfilter_ds {
++	uint8_t sta_mac[ETH_ALEN];
++	uint16_t allow_mac;
++}__attribute__((packed));
++
++struct bsa_cmd_sta_stats_ds {
++	uint8_t sta_mac[ETH_ALEN];
++}__attribute__((packed));
++
++struct bsa_cmd_start_monitor_ds {
++	uint8_t ifname_size;
++	uint8_t ifname[19];
++	uint16_t period;
++	uint16_t duty_cycle;
++}__attribute__((packed));
++
++struct bsa_cmd_stop_monitor_ds {
++	uint8_t ifname_size;
++	uint8_t ifname[IFNAMSIZ];
++}__attribute__((packed));
++
++struct bsa_command {
++	uint16_t cmdid;
++	uint8_t cmd_type;  /* 0 - fixed, 1 - TLV format */
++	uint8_t api_ver;
++	uint8_t bssid[ETH_ALEN];
++	uint16_t payload_len;
++	uint8_t payload[0];
++}__attribute__((packed));
++#endif
+\ No newline at end of file
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-03-29 14:01:05.048276775 +0800
+@@ -51,7 +51,7 @@
+ #endif
+ 
+ extern int bsa_debug_level;
+-extern const struct bsa_driver_ops bsa_driver_qtn_ops;
++extern const struct bsa_driver_ops bsa_driver_brcm_ops;
+ struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ uint16_t vap_count;
+ 
+@@ -94,7 +94,7 @@
+ 							ETH_ALEN);
+ 
+ 				}
+-				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_qtn_ops;
++				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_brcm_ops;
+ 				i++;
+ 				vap_count++;
+ 
+@@ -110,7 +110,9 @@
+ 					memcpy(bsa_conf_info[i].bssid, ifr.ifr_hwaddr.sa_data,
+ 							ETH_ALEN);
+ 				}
++#if 0
+ 				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_qtn_ops;
++#endif
+ 				i++;
+ 				vap_count++;
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-03-29 14:01:05.028276918 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-03-29 14:01:05.048276775 +0800
+@@ -50,7 +50,7 @@
+ int bsa_debug_level = BSA_INFO;
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+-extern const struct bsa_driver_ops bsa_driver_qtn_ops;
++extern const struct bsa_driver_ops bsa_driver_brcm_ops;
+ extern uint16_t vap_count;
+ //extern zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, char *macAddr);
+ 
+@@ -88,6 +88,9 @@
+ 	int index = -1, i = 0;
+ 	uint32_t cmd_spec = BSA_INTF_INFO_GEN_CMD;
+ 	
++	bsa_cmd_buffer->cmdid = htole16(bsa_cmd_buffer->cmdid);
++	bsa_cmd_buffer->payload_len = htole16(bsa_cmd_buffer->payload_len);
++
+ 	if (bsa_cmd_buffer == NULL) {
+ 		bsa_printf(BSA_WARN, "BSA_PEER: received invalid buffer.. \n");
+ 		return -1;
+@@ -565,8 +568,8 @@
+ 	struct bsa_tlv *tlv = (struct bsa_tlv *) start;
+ 	uint16_t len = tlv_vlen(type);
+ 
+-	tlv->type = (type);
+-	tlv->len = (len);
++	tlv->type = htole16(type);
++	tlv->len = htole16(len);
+ 	memcpy(tlv->value, value, value_len);
+ 
+ 	return len + sizeof(struct bsa_tlv);
+@@ -612,6 +615,8 @@
+ 		return -ENOMEM;
+ 
+ 	event_buffer = (void *)tx_buff;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: send event to csm, bssid="MACSTR", event_id = %d",  MAC2STR(bssid), event_id);
+ 	
+ 	switch (event_id) {
+ 	case BSA_EVENT_PROBE_REQ:
+@@ -664,76 +669,79 @@
+ 	case BSA_EVENT_INTF_STATUS:
+ 		intf_status_event = (void *)(drv_event);
+ 		msg_len = INTERFACE_STATUS_INFO_LEN;
+-		event_buffer->event_id = BSA_EVENT_INTF_STATUS;
++		event_buffer->event_id = htole16(BSA_EVENT_INTF_STATUS);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		event_buffer->payload_len = sizeof(struct bsa_evt_intf_status);
++		event_buffer->payload_len = htole16(sizeof(struct bsa_evt_intf_status));
+ 
+ 		intf_status = (void *)&event_buffer->payload;
+ 		intf_status->ifname_size = intf_status_event->ifname_size;
+ 		strncpy((char *)intf_status->ifname, (char *)intf_status_event->ifname, IFNAMSIZ);
+-		intf_status->status = intf_status_event->status;
++		intf_status->status = htole32(intf_status_event->status);
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: Interface status event: bssid"MACSTR", status=%d",
+-				MAC2STR(event_buffer->bssid), intf_status->status);
++				MAC2STR(event_buffer->bssid), intf_status_event->status);
+ 		break;
+ 	case BSA_EVENT_INTF_INFO:
+ 		intf_info1 = (void *)(drv_event);
+ 		msg_len = sizeof(struct bsa_event_info);
+-		event_buffer->event_id = BSA_EVENT_INTF_INFO;
++		event_buffer->event_id = htole16(BSA_EVENT_INTF_INFO);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(&event_buffer->bssid, bssid, ETH_ALEN);
+ 		pos = event_buffer->payload;
+ 		switch (intf_info1->cmd_spec) {
+-		case BSA_INTF_INFO_GEN_CMD:
+-		{
+-			uint8_t value[8];
+-			intf_info = &intf_info1->u.bsa_drv_gen_intf_info_var;
+-
+-			memcpy(value, intf_info->bssid, ETH_ALEN);
+-			*(uint16_t *)&value[ETH_ALEN] = intf_info->mdid;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_BSSID_MDID, value, 8);
+-
+-			if (intf_info->ifname) {
+-				int tlv_len = (strlen((char *)intf_info->ifname) + 4) & (~0x3); /* aligned to 4 bytes including string ending */
+-				uint16_t *ptr = (uint16_t *)pos;
+-				*(ptr++) = TLVTYPE_IFNAME;
+-				*(ptr++) = tlv_len;
+-				strcpy((char *)ptr, (char *)intf_info->ifname);
+-				pos += sizeof(struct bsa_tlv)+tlv_len; 
+-			}
+-
+-			value[0] = intf_info->channel;
+-			value[1] = intf_info->band;
+-			value[2] = intf_info->opclass;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_CHANNEL_BAND, value, 3);
+-			value[0] = intf_info->drivercap;
+-			value[1] = intf_info->phytype;
+-			value[2] = intf_info->capinfo & 0xff;
+-			value[3] = intf_info->capinfo >> 8;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_INTERFACE_CAPABILITY, value, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_HT_CAPABILITY, &intf_info->htcap, sizeof(struct ieee80211_ie_htcap));
+-			pos += bsa_encap_tlv(pos, TLVTYPE_HT_OPERATION, &intf_info->htop, sizeof(struct ieee80211_ie_htinfo));
+-			if (intf_info->phytype==9) { /* vht */
+-				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_CAPABILITY, &intf_info->vhtcap, sizeof(struct ieee80211_ie_vhtcap));
+-				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_OPERATION, &intf_info->vhtop, sizeof(struct ieee80211_ie_vhtop));
+-
+-			}
+-			pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &intf_info->beacon_interval, 2);
+-		}
+-		break;
+-		case BSA_INTF_INFO_FAT_CMD:
+-		{
+-			uint8_t value[4];
+-			intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
+-			value[0] = intf_fat_info->channel;
+-			value[1] = intf_fat_info->band;
+-			*(uint16_t *)&value[2] = intf_fat_info->avg_fat;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_AVERAGE_FAT, value, 4);
+-		}
+-		break;
++			case BSA_INTF_INFO_GEN_CMD:
++			{
++				uint8_t value[8];
++				intf_info = &intf_info1->u.bsa_drv_gen_intf_info_var;
++
++				memcpy(value, intf_info->bssid, ETH_ALEN);
++				*(uint16_t *)&value[ETH_ALEN] = htole16(intf_info->mdid);
++				pos += bsa_encap_tlv(pos, TLVTYPE_BSSID_MDID, value, 8);
++
++				if (intf_info->ifname) {
++					int tlv_len = (strlen((char *)intf_info->ifname) + 4) & (~0x3); /* aligned to 4 bytes including string ending */
++					uint16_t *ptr = (uint16_t *)pos;
++					*(ptr++) = htole16(TLVTYPE_IFNAME);
++					*(ptr++) = htole16(tlv_len);
++					strcpy((char *)ptr, (char *)intf_info->ifname);
++					pos += sizeof(struct bsa_tlv)+tlv_len;
++				}
++
++				value[0] = intf_info->channel;
++				value[1] = intf_info->band;
++				value[2] = intf_info->opclass;
++				pos += bsa_encap_tlv(pos, TLVTYPE_CHANNEL_BAND, value, 3);
++				value[0] = intf_info->drivercap;
++				value[1] = intf_info->phytype;
++				value[2] = htole16(intf_info->capinfo) & 0xff;
++				value[3] = htole16(intf_info->capinfo) >> 8;
++				pos += bsa_encap_tlv(pos, TLVTYPE_INTERFACE_CAPABILITY, value, 4);
++				pos += bsa_encap_tlv(pos, TLVTYPE_HT_CAPABILITY, &intf_info->htcap, sizeof(struct ieee80211_ie_htcap));
++				pos += bsa_encap_tlv(pos, TLVTYPE_HT_OPERATION, &intf_info->htop, sizeof(struct ieee80211_ie_htinfo));
++				if (intf_info->phytype==9) { /* vht */
++					pos += bsa_encap_tlv(pos, TLVTYPE_VHT_CAPABILITY, &intf_info->vhtcap, sizeof(struct ieee80211_ie_vhtcap));
++					pos += bsa_encap_tlv(pos, TLVTYPE_VHT_OPERATION, &intf_info->vhtop, sizeof(struct ieee80211_ie_vhtop));
++
++				}
++				uint16_t beacon_interval_endian = htole16(intf_info->beacon_interval);
++				pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &beacon_interval_endian, 2);
++				bsa_printf(BSA_DEBUG, "BSA_PEER: Interface info event: bssid="MACSTR", drivercap %x, capinfo %x",
++						MAC2STR(event_buffer->bssid), intf_info->drivercap, intf_info->capinfo);
++			}
++			break;
++			case BSA_INTF_INFO_FAT_CMD:
++			{
++				uint8_t value[4];
++				intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
++				value[0] = intf_fat_info->channel;
++				value[1] = intf_fat_info->band;
++				*(uint16_t *)&value[2] = intf_fat_info->avg_fat;
++				pos += bsa_encap_tlv(pos, TLVTYPE_AVERAGE_FAT, value, 4);
++			}
++			break;
+ 		}
+-		event_buffer->payload_len = pos - event_buffer->payload;
+ 		msg_len += event_buffer->payload_len;
++		event_buffer->payload_len = htole16(pos - event_buffer->payload);
+ 		break;
+ 	case BSA_EVENT_DISASSOC:
+ 		sta_disconnect_event = (void *)(drv_event);
+@@ -751,6 +759,7 @@
+ 				sta_disconnect_info->direction, sta_disconnect_info->reason_code);
+ 		break;
+ 	case BSA_EVENT_STA_PHY_STATS:
++#if 0 // TODO
+ 		bsa_dri_sta_stats = (void *)(drv_event);
+ 		msg_len = sizeof (struct bsa_event_info);
+ 		event_buffer->event_id = BSA_EVENT_STA_PHY_STATS;
+@@ -769,10 +778,12 @@
+ 			bsa_dri_sta_info++;
+ 			cnt++;
+ 		}
++#endif
+ 		event_buffer->payload_len = pos - event_buffer->payload;
+ 		msg_len += event_buffer->payload_len;
+ 		break;
+ 	case BSA_EVENT_STA_NONASSOC_STATS:
++#if 0 //TODO
+ 		bsa_dri_neighbour_report = (void *)(drv_event);
+ 		msg_len = sizeof (struct bsa_event_info);
+ 		cnt = 0;
+@@ -789,10 +800,12 @@
+ 			bsa_dri_neighbour++;
+ 			cnt++;
+ 		}
++#endif
+ 		event_buffer->payload_len = pos - event_buffer->payload;
+ 		msg_len += event_buffer->payload_len;
+ 		break;
+ 	case BSA_EVENT_BSS_TRANS_STATUS:
++#if 0 //TODO
+ 		drv_btm_resp_evt = (void *)(drv_event);
+ 		msg_len = sizeof(struct bsa_event_info)+sizeof(struct bsa_evt_bss_trans_status);
+ 		event_buffer->event_id = BSA_EVENT_BSS_TRANS_STATUS;
+@@ -802,6 +815,7 @@
+ 		bss_trans_status = (void*)&event_buffer->payload;
+ 		memcpy( bss_trans_status->sta_mac, drv_btm_resp_evt->bsa_sta_mac, ETH_ALEN);
+ 		bss_trans_status->status_code = drv_btm_resp_evt->bsa_btm_resp_status;
++#endif
+ 		break;
+ 	default:
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
+@@ -888,9 +902,11 @@
+ 				sizeof(struct bsa_drv_connect_compl_event_info));
+ 		break;
+ 	case BSA_EVENT_BSS_TRANS_STATUS:
++#if 0 //TODO
+ 		bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_BSS_TRANS_STATUS, pdata->bssid, 
+ 						event_buff, 
+ 						sizeof(struct ieee80211_bsa_btm_resp_event));
++#endif
+ 		break;
+ 	default:
+ 		break;
+@@ -1656,14 +1672,14 @@
+             printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
+     		//connect_event = (void *)(drv_event);
+     		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+-    		event_buffer->event_id = host_to_le16(BSA_EVENT_CONNECT_COMPLETE);
++    		event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+     		event_buffer->api_ver = BSA_PEER_API_VERSION;
+             zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
+     		//memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-    		event_buffer->payload_len = host_to_le16(sizeof(struct bsa_evt_sta_connect_info));
++    		event_buffer->payload_len = htole16(sizeof(struct bsa_evt_sta_connect_info));
+     		connect_info = (void *)&event_buffer->payload;
+     		memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-    		connect_info->curr_band = host_to_le16(BSA_OPER_BAND_2G);
++    		connect_info->curr_band = htole16(BSA_OPER_BAND_2G);
+             zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
+     		connect_info->channel = chanspec.channel;
+ 
+@@ -1671,8 +1687,8 @@
+             zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
+             printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
+ 
+-            connect_info->rx_ss_info = host_to_le16(sta_info.rx_ss_info);
+-    		connect_info->max_phy_rate = host_to_le16(sta_info.max_phy_rate);
++            connect_info->rx_ss_info = htole16(sta_info.rx_ss_info);
++    		connect_info->max_phy_rate = htole16(sta_info.max_phy_rate);
+             //Bit0-3: supported bandwidth Bit3: IEEE802.11v support
+             //Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
+             connect_info->sta_capab=0;
+Index: bsa-1.0.1/bsa_peer/bsa_conf.txt
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_conf.txt	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_conf.txt	2017-03-29 14:01:05.048276775 +0800
+@@ -1 +1,2 @@
+ 5g_band_interface=wifi0
++2g_band_interface=wl0
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.h	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.h	2017-03-29 14:01:05.048276775 +0800
+@@ -54,7 +54,7 @@
+ #define INTERFACE_5G	"5g_band_interface"
+ #define BSA_PEER_DEBUG_LEVEL	"bsa_debug_level"
+ #define BSA_PEER_MAX_INTF_COUNT	8
+-#define BSA_CONF_FILE_PATH	"/mnt/jffs2/bsa_conf.txt"
++#define BSA_CONF_FILE_PATH	"/etc/bsa_conf.txt"
+ #define BUFF_SIZE		100
+ 
+ struct bsa_peer_bssid_list {
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-03-29 14:01:05.028276918 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-03-29 14:01:05.048276775 +0800
+@@ -13,7 +13,7 @@
+ #include "bsa_includes.h"
+ #include "bsa_common_defs.h"
+ #include "bsa_driver.h"
+-#include "bsa_driver_qtn.h"
++#include "bsa_driver_brcm.h"
+ #include "bsa_peer_entity.h"
+ #include "bsa_wireless_copy.h"
+ /* BRCM SOCKET */

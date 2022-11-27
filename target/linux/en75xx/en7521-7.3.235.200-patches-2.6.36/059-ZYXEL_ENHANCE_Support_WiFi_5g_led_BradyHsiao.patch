@@ -1,0 +1,15 @@
+Index: linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h
+===================================================================
+--- linux-2.6.36.orig/arch/mips/include/asm/tc3162/ledcetrl.h	2018-03-05 15:03:26.088461593 +0800
++++ linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h	2018-03-05 15:09:36.658876932 +0800
+@@ -270,6 +270,10 @@
+ #define GPIO_UPS_BATT_MISSING		(LED_BASE + 109) /* active HIGH when battery missing */
+ #endif
+ 
++#define LED_WLAN_5G_STATUS                      (LED_BASE + 111)
++#define LED_WLAN_5G_ACT_STATUS                  (LED_BASE + 112)
++#define LED_WLAN_5G_NOACT_STATUS                (LED_BASE + 113)
++
+ #define mtkled_read_reg_word(reg) 			regRead32(reg)
+ #define mtkled_write_reg_word(reg, wdata) 	regWrite32(reg, wdata)
+ /*__________________________________________________________________________

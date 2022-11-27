@@ -1,0 +1,36 @@
+Index: libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/network/broadband/zcfg_fe_dal_broadband.c	2018-07-24 18:10:14.451342474 -0700
++++ libzcfg_fe_dal-1.0/network/broadband/zcfg_fe_dal_broadband.c	2018-07-24 18:17:28.643350803 -0700
+@@ -36,6 +36,7 @@
+ 	//VLAN term
+ 	{"VLANEnable",			dalType_boolean,	0,	0,	NULL},
+ 	{"VLANID",				dalType_int,		-1,	4094,	NULL},
++	{"MVLANID",                             dalType_int,            -1,     4094,   NULL},
+ 	{"VLANPriority",		dalType_int,		-1,	7,	NULL},
+ 	//ppp Iface
+ 	{"pppUsername",			dalType_string,	0,	0,	NULL},
+@@ -376,6 +377,7 @@
+ 
+ 	if(json_object_get_boolean(json_object_object_get(Jobj, "VLANEnable")) == false){
+ 		json_object_object_add(Jobj, "VLANID", json_object_new_int(-1));
++		json_object_object_add(Jobj, "MVLANID", json_object_new_int(-1));
+ 		json_object_object_add(Jobj, "VLANPriority", json_object_new_int(-1));
+ 	}
+ 	
+@@ -760,6 +762,7 @@
+ 
+ 	replaceParam(vlanTermObj, "X_ZYXEL_VLANEnable", Jobj, "VLANEnable");
+ 	replaceParam(vlanTermObj, "VLANID", Jobj, "VLANID");
++	replaceParam(vlanTermObj, "MVLANID", Jobj, "MVLANID");
+ 	replaceParam(vlanTermObj, "X_ZYXEL_VLANPriority", Jobj, "VLANPriority");
+ 	
+ 	sprintf(currLowerLayers, "Ethernet.VLANTermination.%u", vlanTermIid.idx[0]);
+@@ -3470,6 +3473,7 @@
+ 	json_object_object_add(pramJobj, "Type", json_object_new_string(CurrType));
+ 	json_object_object_add(pramJobj, "Mode", json_object_new_string(CurrMode));
+ 	json_object_object_add(pramJobj, "VLANID", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "VLANID")));
++	json_object_object_add(pramJobj, "VLANID", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "MVLANID")));
+ 	json_object_object_add(pramJobj, "VLANEnable", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "X_ZYXEL_VLANEnable")));
+ 	json_object_object_add(pramJobj, "VLANPriority", JSON_OBJ_COPY(json_object_object_get(vlanTermObj, "X_ZYXEL_VLANPriority")));
+ 	json_object_object_add(pramJobj, "Iid", json_object_new_int(ipIfaceIid.idx[0]));

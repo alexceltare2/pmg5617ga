@@ -1,0 +1,142 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-28 16:28:12.588862703 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-28 17:46:43.242716838 +0800
+@@ -413,15 +413,17 @@
+ 			probe_event.curr_band = BSA_OPER_BAND_2G;
+ 
+ 			werxfd = (struct wl_event_rx_frame_data *)((bcm_event_t *)pkt + 1);
+-			probe_event.rssi = werxfd->rssi;
+-			probe_event.channel = werxfd->channel;
++			probe_event.rssi = ntohl(werxfd->rssi);
++			bsa_brcm_get_channel_info_from_chanspec(ntohs(werxfd->channel), &chanspec);
++			probe_event.channel = chanspec.channel;
++
+ #if 0 //tmp
+ 			probe_event.max_phy_rate = zyGetHTMaxPhyRate(werxfd->bandwidth40, werxfd->sgi, werxfd->supportedMCSSet, &rss);
+ 			probe_event.rss = (uint16)rss;
+ 			probe_event.band_width = werxfd->bandwidth40;
+ 			probe_event.bss_transition = werxfd->bssTransition;
+ #else
+-			probe_event.max_phy_rate = werxfd->rate;
++			probe_event.max_phy_rate = ntohl(werxfd->rate);
+ 			probe_event.rss = 1;
+ 			probe_event.band_width = 1;
+ 			probe_event.bss_transition = 0;
+@@ -439,10 +441,10 @@
+ 
+ 			if ((BSA_DEBUG >= bsa_debug_level) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type))) {
+ 				printf("%s:%d BSA_EVENT_PROBE_REQ, ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
+-								__FUNCTION__, __LINE__, wlem->ifname, connect_event.curr_band, connect_event.channel, MAC2STR(connect_event.sta_mac));
+-				printf("		band_width=%d, bss_transition_support=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d\n",
+-								connect_event.band_width, connect_event.bss_transition_support, connect_event.vht_capab, connect_event.mu_mimo_capab,
+-								connect_event.max_phy_rate, connect_event.rss);
++								__FUNCTION__, __LINE__, wlem->ifname, probe_event.curr_band, probe_event.channel, MAC2STR(probe_event.sta_mac));
++				printf("		band_width=%d, bss_transition=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d, rssi=%d\n",
++								probe_event.band_width, probe_event.bss_transition, probe_event.vht_capab, probe_event.mu_mimo_capab,
++								probe_event.max_phy_rate, probe_event.rss, probe_event.rssi);
+ 			}
+ 
+ 			if (memcmp(boradcast_addr, bssid, ETH_ALEN)==0) {
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-28 16:28:12.612862572 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-28 17:45:40.739111432 +0800
+@@ -36,14 +36,46 @@
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ 
++
++int bsa_brcm_get_channel_info_from_chanspec(int chanspec, struct ChSpec *chspec)
++{
++    int channel = 0, sb = 0, sideband = CTLSB_NONE, bandwith = 0;
++
++	if ((chanspec == 0) || (chspec == NULL)) {
++		return -1;
++	}
++	if ((chanspec & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40) {
++		bandwith = 40;
++		sb = chanspec & WL_CHANSPEC_CTL_SB_MASK;
++		if (sb == WL_CHANSPEC_CTL_SB_LOWER) {
++			channel = (chanspec & WL_CHANSPEC_CHAN_MASK) - 2;
++			sideband = CTLSB_LOWER;
++		}
++		else {
++			channel = (chanspec & WL_CHANSPEC_CHAN_MASK) + 2;
++			sideband = CTLSB_UPPER;
++		}
++	}
++	else {
++		bandwith = 20;
++		channel = chanspec & WL_CHANSPEC_CHAN_MASK;
++		sideband = CTLSB_NONE;
++	}
++	chspec->chanspec = chanspec;
++	chspec->bw = bandwith;
++	chspec->channel = channel;
++	chspec->sb = sideband;
++	chspec->band = CHSPEC_IS2G(chanspec) ? (2) : (5);
++	return 0;
++}
++
+ #define ID_CURSPEC_SEP '('
+ zcfgRet_t bsa_brcm_get_current_channel_info(const char *ifname, struct ChSpec *chspec)
+ {
+     char cmd[100] = {0};
+     FILE *fp = NULL;
+     char *cp;
+-    int chanspec = 0, channel = 0, sb = 0, sideband = CTLSB_NONE;
+-    int bandwith = 0;
++    int chanspec = 0;
+     static char *filePath = "/tmp/.cur_channel";
+ 
+     if(ifname == NULL || strncmp(ifname, "wl", 2)) {
+@@ -65,33 +97,9 @@
+         fclose(fp);
+         unlink(filePath);
+ 
+-        if(chanspec){
+-            if((chanspec & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40) {
+-                bandwith = 40;
+-                sb = chanspec & WL_CHANSPEC_CTL_SB_MASK;
+-                if(sb == WL_CHANSPEC_CTL_SB_LOWER){
+-                    channel = (chanspec & WL_CHANSPEC_CHAN_MASK) - 2;
+-                    sideband = CTLSB_LOWER;
+-                }
+-                else{
+-                    channel = (chanspec & WL_CHANSPEC_CHAN_MASK) + 2;
+-                    sideband = CTLSB_UPPER;
+-                }
+-            }
+-            else {
+-                bandwith = 20;
+-                channel = chanspec & WL_CHANSPEC_CHAN_MASK;
+-                sideband = CTLSB_NONE;
+-            }
+-            chspec->chanspec = chanspec;
+-            chspec->channel = channel;
+-            chspec->bw = bandwith;
+-            if(CHSPEC_IS2G(chanspec)) chspec->band = 2;
+-            else chspec->band = 5;
+-            chspec->sb = sideband;
+-
+-            return ZCFG_SUCCESS;
+-        }
++		if (bsa_brcm_get_channel_info_from_chanspec(chanspec, chspec) != -1) {
++			return ZCFG_SUCCESS;
++		}
+     }
+     else {
+         printf("%s: error open file\n",__FUNCTION__);
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-28 16:28:12.612862572 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-28 17:34:52.731247714 +0800
+@@ -276,6 +276,7 @@
+ 	uint16_t avg_fat;	
+ }__attribute__((packed));
+ 
++int bsa_brcm_get_channel_info_from_chanspec(int chanspec, struct ChSpec *chspec);
+ uint32 bsa_brcm_event_type_2_bsa_debug_filter(uint32 eventType);
+ zcfgRet_t bsa_brcm_get_current_channel_info(const char *ifname, struct ChSpec *chspec);
+ void bsa_brcm_get_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta);

@@ -1,0 +1,19 @@
+Index: linux-2.6.36/net/ipv6/netfilter/Makefile
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/netfilter/Makefile	2017-04-26 03:23:04.919158458 +0800
++++ linux-2.6.36/net/ipv6/netfilter/Makefile	2017-04-27 16:23:09.655097318 +0800
+@@ -4,10 +4,10 @@
+ 
+ # Link order matters here.
+ ifneq ($(strip $(TCSUPPORT_IPV6_ADVANCE)),)
+-obj-$(TCSUPPORT_IPV6_ADVANCE) += ip6_tables.o
+-obj-$(TCSUPPORT_IPV6_ADVANCE) += ip6table_filter.o
+-obj-$(TCSUPPORT_IPV6_ADVANCE) += ip6t_LOG.o
+-obj-$(TCSUPPORT_IPV6_ADVANCE) += nf_conntrack_ipv6.o
++obj-m += ip6_tables.o
++obj-m += ip6table_filter.o
++obj-m += ip6t_LOG.o
++obj-m += nf_conntrack_ipv6.o
+ endif
+ 
+ #obj-$(CONFIG_IP6_NF_IPTABLES) += ip6_tables.o

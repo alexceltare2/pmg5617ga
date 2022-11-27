@@ -1,0 +1,190 @@
+Index: linux-2.6.36/net/bridge/br_fdb.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_fdb.c	2018-05-10 03:41:13.400732559 -0700
++++ linux-2.6.36/net/bridge/br_fdb.c	2018-05-10 03:50:02.864742715 -0700
+@@ -59,6 +59,10 @@
+ static int mac_limit_total_read_proc(char *buf, char **start, off_t off, int count, int *eof, void *data);
+ static int mac_limit_by_port_write_proc(struct file *file, const char *buffer, unsigned long count, void *data);
+ static int mac_limit_by_port_read_proc(char *buf, char **start, off_t off, int count, int *eof, void *data);
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++static int mac_limit_by_bridge_write_proc(struct file *file, const char *buffer, unsigned long count, void *data);
++static int mac_limit_by_bridge_read_proc(char *buf, char **start, off_t off, int count, int *eof, void *data);
++#endif
+ #endif
+ 
+ int (*portbind_check_bind_wantype)(char *landev, int bind_index);
+@@ -99,6 +103,16 @@
+ 	}
+ 	br_fdb_proc->read_proc = mac_limit_by_port_read_proc;
+ 	br_fdb_proc->write_proc = mac_limit_by_port_write_proc;
++	#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++	br_fdb_proc = create_proc_entry("br_fdb/mac_limit_by_bridge",0,NULL);
++	if(NULL == br_fdb_proc)
++	{
++		printk("ERROR!Create proc entry mac_limit_by_bridge fail!");
++		return -ENOMEM;
++	}
++	br_fdb_proc->read_proc = mac_limit_by_bridge_read_proc;
++	br_fdb_proc->write_proc = mac_limit_by_bridge_write_proc;
++	#endif
+ 	#endif
+ 	
+ 	
+@@ -645,6 +659,9 @@
+ 
+ #ifdef TCSUPPORT_BRIDGE_MAC_LIMIT
+ #define LIMIT_TEST_TOTAL 8
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++#define MAX_BRIDGE_NUM 4
++#endif
+ int macNumTotal = 0;
+ 
+ static unsigned char macLimit = 0;
+@@ -669,6 +686,25 @@
+ 	{"eth0.4",6,0,0},
+ };
+ #endif
++
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++typedef struct
++{
++	char* devName;
++	int macNumByBridge;
++	int maxNumByBridge;
++
++}bridge_mac_num;
++
++static bridge_mac_num brMacNum[MAX_BRIDGE_NUM] =
++{
++	{"br0", 0, 0},
++	{"br1", 0, 0},
++	{"br2", 0, 0},
++	{"br3", 0, 0},
++};
++#endif
++
+ #define CNT_DEVMACNUM (sizeof(devMacNum)/sizeof(dev_mac_num))
+ 
+ void br_fdb_need_flush(struct net_bridge *br)
+@@ -684,6 +720,9 @@
+ {
+ 	int i, j;
+ 	bool ret_toal = false, ret_port = false;
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++	int brMacLimit = 0;
++#endif
+ 
+ 	spin_lock_bh(&br->hash_lock);
+ 	macNumTotal = 0;
+@@ -709,6 +748,22 @@
+ 		}
+ 	}
+ 
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++	for (j = 0;j< MAX_BRIDGE_NUM;j++)
++	{
++		if(0 == strcmp(brMacNum[j].devName, br->dev->name))
++		{
++			brMacLimit = brMacNum[j].maxNumByBridge;
++			break;
++		}
++	}
++
++	if((brMacLimit != 0) && (macNumTotal >= brMacLimit))
++	{
++		ret_toal = true;
++		goto result;
++	}
++#else
+ 	if(0 == macLimit){
+ 		ret_toal = false;
+ 	}else{	
+@@ -718,7 +773,7 @@
+ 		}else
+ 			ret_toal = false;
+ 	}
+-
++#endif
+ 	for(i = 0;i < CNT_DEVMACNUM;i++)
+ 	{
+ 		if(0 == strcmp(devName,devMacNum[i].devName))
+@@ -854,6 +909,58 @@
+ 
+ 	return 0;
+ }
++#ifdef ZYXEL_BRIDGE_MAC_LIMIT
++static int mac_limit_by_bridge_write_proc(struct file *file, const char *buffer, unsigned long count, void *data)
++{
++	char val_string[64];
++	char* endpo;
++	char bridge[10];
++	int bridgeNo;
++	char bridgeMacLimit[10];
++	int bridgeMacLimitNum;
++	char* p = NULL;
++	int i;
++
++	if (count > sizeof(val_string) - 1){
++		return -EINVAL ;
++	}
++	memset(val_string,0,64);
++	if (copy_from_user(val_string, buffer, count)){
++		return -EFAULT ;
++	}
++	p = strchr(val_string,'-');
++
++	if(NULL == p){
++		return -EINVAL;
++	}
++	memset(bridge, 0, 10);
++	memmove(bridge, val_string, p-val_string);
++	bridgeNo = simple_strtol(bridge, &endpo,10);
++	
++	if(bridgeNo >= MAX_BRIDGE_NUM){
++		return -EFAULT ;
++	}
++	memset(bridgeMacLimit, 0, 10);
++	strcpy(bridgeMacLimit, p+1);
++	bridgeMacLimitNum = simple_strtol(bridgeMacLimit, &endpo, 10);
++	brMacNum[bridgeNo].maxNumByBridge = bridgeMacLimitNum;
++	needFlushFlag = true;
++	
++	return count;
++}
++
++static int mac_limit_by_bridge_read_proc(char *buf, char **start, off_t off, int count, int *eof, void *data)
++{
++	int i = 0;
++
++	for(i = 0;i < MAX_BRIDGE_NUM;i++)
++	{
++		printk("%s: %d\n", brMacNum[i].devName, brMacNum[i].maxNumByBridge);
++	}
++
++	return 0;
++}
++#endif
+ #endif
+ 
+ 
+Index: linux-2.6.36/net/bridge/br_input.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_input.c	2018-05-10 03:41:13.400732559 -0700
++++ linux-2.6.36/net/bridge/br_input.c	2018-05-10 03:50:11.184742875 -0700
+@@ -370,7 +370,16 @@
+ 	struct net_bridge_port *p = br_port_get_rcu(skb->dev);
+ 
+ 	if(p) {
++#ifdef TCSUPPORT_BRIDGE_MAC_LIMIT
++		struct net_bridge *br;
++		br = p->br;
++		br_fdb_need_flush(br);
++		if(!((!br_fdb_mac_exist(br,eth_hdr(skb)->h_source,skb->dev->name))&&
++			(br_fdb_judge_mac_num(br, skb->dev->name))))
++#endif
++		{
+ 		br_fdb_update(p->br, p, eth_hdr(skb)->h_source, skb);
++		}
+ 	}
+ 
+ 	return 0;	 /* process further */

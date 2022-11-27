@@ -1,0 +1,1229 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-09 11:15:04.172349523 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-09 11:15:04.188349433 +0800
+@@ -69,16 +69,6 @@
+ 	return retval;
+ }
+ 
+-/*static int get_bsa_conf_info_by_name(char *name)
+-{
+-	int i;
+-	for (i=0;i<vap_count;i++) {
+-		if (strcmp(bsa_conf_info[i].ifname, name)==0)
+-			return i;
+-	}
+-	return -1;
+-}*/
+-
+ static int bsa_peer_recv_cmd_from_bsaapp(void *cmd_ctx, void *buffer, size_t cmd_len)
+ {
+ 	struct bsa_peer_entity *bsa_peer = (void *) cmd_ctx;
+@@ -289,19 +279,6 @@
+ 
+ 	return 0;
+ }
+-/*
+-static void bsa_netlink_receive_link(struct bsa_netlink_data *netlink,
+-				void (*cb)(void *ctx, struct ifinfomsg *ifi,
+-				uint8_t *buf, size_t len),
+-				struct nlmsghdr *h)
+-{
+-	if (cb == NULL || NLMSG_PAYLOAD(h, 0) < sizeof(struct ifinfomsg))
+-		return;
+-
+-	cb(netlink->cfg->ctx, NLMSG_DATA(h),
+-		(uint8_t *) NLMSG_DATA(h) + NLMSG_ALIGN(sizeof(struct ifinfomsg)),
+-		NLMSG_PAYLOAD(h, sizeof(struct ifinfomsg)));
+-}*/
+ 
+ void bsa_peer_process_app_cmd(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+@@ -350,71 +327,33 @@
+ 	return;
+ }
+ 
+-void zyChangeEndian(bcm_event_t *Oripkt){
+-    Oripkt->event.version=ntohs(Oripkt->event.version);
+-    Oripkt->event.flags=ntohs(Oripkt->event.flags);
+-    Oripkt->event.event_type=ntohl(Oripkt->event.event_type);
+-    Oripkt->event.status=ntohl(Oripkt->event.status);
+-    Oripkt->event.reason=ntohl(Oripkt->event.reason);
+-    Oripkt->event.auth_type=ntohl(Oripkt->event.auth_type);
+-    Oripkt->event.datalen=ntohl(Oripkt->event.datalen);
++void zyChangeEndian(bcm_event_t *Oripkt) {
++	Oripkt->event.version=ntohs(Oripkt->event.version);
++	Oripkt->event.flags=ntohs(Oripkt->event.flags);
++	Oripkt->event.event_type=ntohl(Oripkt->event.event_type);
++	Oripkt->event.status=ntohl(Oripkt->event.status);
++	Oripkt->event.reason=ntohl(Oripkt->event.reason);
++	Oripkt->event.auth_type=ntohl(Oripkt->event.auth_type);
++	Oripkt->event.datalen=ntohl(Oripkt->event.datalen);
++
++	return;
+ }
+ 
+ void bsa_peer_netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+-    struct bsa_peer_entity *bsa_peer = eloop_ctx;
+-    char pkt[4096] = {0};
+-    int sock_len = sizeof(struct sockaddr_in);
+-    int bytes;
+-    struct sockaddr_in fromdriv;
+-    bcm_event_t *dpkt;
+-    bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
+-    dpkt = (bcm_event_t *)pkt;
+-    zyChangeEndian(dpkt);
+-    zybsa_peer_drv_events_handler(dpkt, dpkt->event.event_type, bsa_peer);
+-    /*struct bsa_peer_entity *bsa_peer = eloop_ctx;
+-	struct bsa_netlink_data *netlink = bsa_peer->netlink;
+-	char *buf;
+-	int left;
+-	struct nlmsghdr *h;
+-
+-	buf = malloc(BSA_PEER_MAX_MSG_LEN);
+-	if (!buf) {
+-		bsa_printf(BSA_WARN, "BSA_PEER: Memory allocation failed for event buffer");
+-		return;
+-	}
+-
+-	left = recvfrom(sock, buf, BSA_PEER_MAX_MSG_LEN, MSG_DONTWAIT,
+-			NULL, NULL);
+-	if (left < 0) {
+-		if (errno != EINTR && errno != EAGAIN)
+-			bsa_printf(BSA_WARN, "BSA_PEER: netlink: recvfrom failed: %s",
+-					strerror(errno));
+-		free(buf);
+-		return;
+-	}
++	struct bsa_peer_entity *bsa_peer = eloop_ctx;
++	char pkt[4096] = {0};
++	int sock_len = sizeof(struct sockaddr_in);
++	int bytes;
++	struct sockaddr_in fromdriv;
++	bcm_event_t *dpkt;
++
++	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
++	dpkt = (bcm_event_t *)pkt;
++	zyChangeEndian(dpkt);
++	zybsa_peer_drv_events_handler(dpkt, dpkt->event.event_type, bsa_peer);
+ 
+-	h = (struct nlmsghdr *) buf;
+-	while (NLMSG_OK(h, left)) {
+-		switch (h->nlmsg_type) {
+-			case RTM_NEWLINK:
+-				bsa_netlink_receive_link(netlink, netlink->cfg->newlink_cb, h);
+-				break;
+-			case RTM_DELLINK:
+-				bsa_netlink_receive_link(netlink, netlink->cfg->dellink_cb, h);
+-				break;
+-		}
+-
+-		h = NLMSG_NEXT(h, left);
+-	}
+-
+-	if (left > 0) {
+-		bsa_printf(BSA_DEBUG, "BSA_PEER:%d extra bytes in the end of netlink message", left);
+-	}
+-
+-	free(buf);
+ 	return;
+-	*/
+ }
+ 
+ void bsa_peer_netlink_deinit(struct bsa_netlink_data *netlink)
+@@ -433,13 +372,15 @@
+ 
+ 	free(netlink->cfg);
+ 	free(netlink);
++
++	return;
+ }
+ 
+ struct bsa_netlink_data * bsa_peer_netlink_create(struct bsa_netlink_config *cfg)
+ {
+ 	struct bsa_netlink_data *netlink;
+ 	struct sockaddr_nl read_local2, write_local;
+-    //struct sockaddr_nl read_local1;
++	//struct sockaddr_nl read_local1;
+ 	netlink = (struct bsa_netlink_data *)malloc(sizeof(struct bsa_netlink_data));
+ 	if (netlink == NULL) {
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: allocation for netlink structures failed");
+@@ -449,7 +390,7 @@
+ 	netlink->cfg = cfg;
+ 
+ 	/*init brcm_drv_read_socket*/
+-    bsa_drv_read_sock_init(&netlink->drv_read_sock);
++	bsa_drv_read_sock_init(&netlink->drv_read_sock);
+ 	//netlink->drv_read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+ 	if (netlink->drv_read_sock < 0) {
+ 		bsa_printf(BSA_WARN, "BSA_PEER: Failed to open netlink socket: %s",
+@@ -457,7 +398,7 @@
+ 		bsa_peer_netlink_deinit(netlink);
+ 		return NULL;
+ 	}
+-    /*
++	/*
+ 	memset(&read_local1, 0, sizeof(read_local1));
+ 	read_local1.nl_family = AF_NETLINK;
+ 	read_local1.nl_groups = RTMGRP_LINK;
+@@ -542,7 +483,7 @@
+ 		if(FD_ISSET(net_data->read_sock, &rfds))
+ 			bsa_peer_process_app_cmd(net_data->read_sock, bsa_peer, NULL);
+ 	}
+-
++	return;
+ }
+ 
+ int16_t tlv_vlen(uint16_t type)
+@@ -709,8 +650,9 @@
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(&event_buffer->bssid, bssid, ETH_ALEN);
+ 		pos = event_buffer->payload;
++
+ 		switch (intf_info1->cmd_spec) {
+-			case BSA_INTF_INFO_GEN_CMD:
++		case BSA_INTF_INFO_GEN_CMD:
+ 			{
+ 				uint8_t value[8];
+ 				intf_info = &intf_info1->u.bsa_drv_gen_intf_info_var;
+@@ -742,7 +684,6 @@
+ 				if (intf_info->phytype==9) { /* vht */
+ 					pos += bsa_encap_tlv(pos, TLVTYPE_VHT_CAPABILITY, &intf_info->vhtcap, sizeof(struct ieee80211_ie_vhtcap));
+ 					pos += bsa_encap_tlv(pos, TLVTYPE_VHT_OPERATION, &intf_info->vhtop, sizeof(struct ieee80211_ie_vhtop));
+-
+ 				}
+ 				uint16_t beacon_interval_endian = htole16(intf_info->beacon_interval);
+ 				pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &beacon_interval_endian, 2);
+@@ -750,7 +691,7 @@
+ 						MAC2STR(event_buffer->bssid), intf_info->drivercap, intf_info->capinfo);
+ 			}
+ 			break;
+-			case BSA_INTF_INFO_FAT_CMD:
++		case BSA_INTF_INFO_FAT_CMD:
+ 			{
+ 				uint8_t value[4];
+ 				intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
+@@ -764,7 +705,7 @@
+ 			break;
+ 		}
+ 		event_buffer->payload_len = pos - event_buffer->payload;
+- 		msg_len += event_buffer->payload_len;
++	 	msg_len += event_buffer->payload_len;
+ 		event_buffer->payload_len = htole16(pos - event_buffer->payload);
+ 		break;
+ 	case BSA_EVENT_DISASSOC:
+@@ -1000,123 +941,7 @@
+ 		pos += iwe->len;
+ 	}
+ }
+-#if 0
+-void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len)
+-{
+-	struct bsa_peer_entity  *bsa_peer  = ctx;
+-	char ifname[IFNAMSIZ + 1] = {0};
+-	int index;
+-	if_indextoname(ifi->ifi_index, ifname);
+-	index = get_bsa_conf_info_by_name(ifname);
+-	if (index >=0) {
+-		struct bsa_drv_intf_status *drv_intf_status = (struct bsa_drv_intf_status *)calloc(1, BSA_EVENT_BUFF_SIZE);
+-		if (drv_intf_status) {
+-			strncpy((char *)drv_intf_status->ifname, ifname, IFNAMSIZ);
+-			drv_intf_status->ifname_size = strlen((char *)drv_intf_status->ifname);
+-			drv_intf_status->status = BSA_INTF_STATE_DELETED;		
+-			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_STATUS, bsa_conf_info[index].bssid,
+-					(uint8_t *)drv_intf_status, sizeof(struct bsa_drv_intf_status));		
+-			free(drv_intf_status);
+-		}
+-		bsa_conf_info[index].status = 0;
+-	}
+-}
+-
+-void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len)
+-{
+-	struct bsa_peer_entity  *bsa_peer  = ctx;
+-	struct bsa_drv_intf_status *drv_intf_status = NULL;
+-	struct ifreq ifr;
+-	int attrlen, rta_len;
+-	struct rtattr *attr;
+-	char ifname[IFNAMSIZ + 1] = {0};
+-	char *event_buff = NULL;
+-	uint8_t bssid[ETH_ALEN];
+-	int index;
+-	attrlen = len;
+-	attr = (struct rtattr *) buf;
+-	rta_len = RTA_ALIGN(sizeof(struct rtattr));
+-
+-	while (RTA_OK(attr, attrlen)) {
+-		switch(attr->rta_type) {
+-		case  IFLA_WIRELESS:
+-			bsa_peer_events(bsa_peer, ((char *) attr) + rta_len,
+-							attr->rta_len -	rta_len);
+-			break;
+-#if 0
+-		case IFLA_OPERSTATE:
+-			pos = extra;
+-			nla = (struct nlattr *) attr;
+-
+-			memcpy(extra, RTA_DATA(attr), RTA_PAYLOAD(attr));
+-			ifname[RTA_PAYLOAD(attr)] = '\0';
+-			pos += snprintf(pos, end - pos, " operstate=%u",
+-					RTA_DATA((struct rtattr *)attr));
+-			break;
+-#endif
+-		case IFLA_LINKMODE:
+-			memset(&ifr, 0, sizeof(struct ifreq));
+-			memset(bssid, 0, ETH_ALEN);
+-
+-			event_buff = (char *)calloc(1, BSA_EVENT_BUFF_SIZE);
+-
+-			if (!event_buff) {
+-				return;
+-			}
+-
+-			if_indextoname(ifi->ifi_index, ifname);
+-			drv_intf_status = (void*)event_buff;
+-			strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
+-
+-			if ((ioctl(bsa_peer->ioctl_sock, SIOCGIFINDEX, &ifr) == 0) &&
+-				(ioctl(bsa_peer->ioctl_sock, SIOCGIFHWADDR, &ifr) == 0)) {
+-				memcpy(bssid, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+-			}
+-			index = get_bsa_conf_info_by_name(ifname);
+-
+-			/* only track interested interface */
+-			if (index<0) 
+-				goto bail;
+-			if ((ifi->ifi_flags & IFF_UP) || (ifi->ifi_flags & IFF_RUNNING)) {
+-				drv_intf_status->status = BSA_INTF_STATUS_UP;
+-				if (index >=0) {
+-					if (memcmp(bsa_conf_info[index].bssid, bssid, ETH_ALEN)) {
+-						memcpy(bsa_conf_info[index].bssid, bssid, ETH_ALEN);
+-					}
+-					if (bsa_conf_info[index].bsa_peer_driver_cb){
+-						int error; 
+-						if  (bsa_conf_info[index].bsa_peer_driver_cb->get_intf_info) {
+-							error = bsa_conf_info[index].bsa_peer_driver_cb->get_intf_info
+-								(bsa_peer, index, BSA_INTF_INFO_GEN_CMD);
+-						}
+-						if (bsa_conf_info[index].bsa_peer_driver_cb->set_bsa_status) {
+-							error = bsa_conf_info[index].bsa_peer_driver_cb->set_bsa_status
+-								(bsa_peer, index, ENABLE_BSA);
+-						}
+-						bsa_conf_info[index].status = 1;
+-
+-					}
+-				}
+-			} else {
+-				if (index>=0)
+-					bsa_conf_info[index].status = 0;
+-				drv_intf_status->status = BSA_INTF_STATUS_DOWN;
+-			}
+-
+-			strncpy((char *)drv_intf_status->ifname, ifname, IFNAMSIZ);
+-			drv_intf_status->ifname_size = strlen((char *)drv_intf_status->ifname);
+-
+-			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_STATUS, bssid,
+-						(uint8_t *)event_buff, sizeof(struct bsa_drv_intf_status));
+-bail:
+-			free(event_buff);
+-			break;
+ 
+-		}
+-			attr = RTA_NEXT(attr, attrlen);
+-	}
+-}
+-#endif
+ int bsa_peer_event_init()
+ {
+ 	struct bsa_netlink_config *cfg;
+@@ -1133,8 +958,6 @@
+ 	}
+ 
+ 	cfg->ctx = bsa_peer;
+-	//cfg->newlink_cb = bsa_peer_event_rtm_newlink;
+-	//cfg->dellink_cb = bsa_peer_event_rtm_dellink;
+ 	bsa_peer->netlink = bsa_peer_netlink_create(cfg);
+ 	bsa_peer->ioctl_sock = socket(PF_INET, SOCK_DGRAM, 0);
+ 
+@@ -1164,68 +987,43 @@
+ 	bsa_peer->netlink = NULL;
+ }
+ 
+-void bsa_drv_read_sock_init(int* drv_evt_sock){
+-    printf("\033[0;32;33m [init brcm event socket] \033[0m \n");
+-    /*brcm event socket----below*/
+-    struct sockaddr_in fromdriv;
+-    int evt_sock, reuse = 1, err=0;
+-    /*unsigned int type;
+-    char pkt[4096] = {0};
+-    int sock_len = sizeof(struct sockaddr_in);
+-    int bytes, len=4096;
+-    bcm_event_t *dpkt;*/
+-
+-    memset(&fromdriv, 0, sizeof(fromdriv));
+-    /* Prepare connect struct */
+-    fromdriv.sin_family = AF_INET;
+-    fromdriv.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //htonl(INADDR_LOOPBACK);
+-    fromdriv.sin_port = htons(EAPD_WKSP_MEVENT_UDP_SPORT);
+-
+-    /* Create socket */
+-    reuse=1;
+-    if (( evt_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+-    	//WPRINT(W_ERROR, "Unable to create socket.\n");
+-        printf("\033[0;32m [Unable to create socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
+-    	err = -1;
+-    }
+-    else if ( (err = setsockopt(evt_sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse))) < 0) {
+-    	//WPRINT(W_ERROR, "Unable to setsockopt to loopback socket %d.\n", evt_sock);
+-        printf("\033[0;32m [Unable to setsockopt to loopback socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
+-    }
+-    else if ( (err = bind(evt_sock, (struct sockaddr *)&fromdriv, sizeof(struct sockaddr))) < 0) {
+-    	//WPRINT(W_ERROR, "Unable to bind to loopback socket %d.\n", evt_sock);
+-        printf("\033[0;32m [Unable to bind to loopback socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
+-    }
++void bsa_drv_read_sock_init(int* drv_evt_sock) {
++	/*brcm event socket----below*/
++	struct sockaddr_in fromdriv;
++	int evt_sock, reuse = 1, err=0;
++
++	memset(&fromdriv, 0, sizeof(fromdriv));
++	/* Prepare connect struct */
++	fromdriv.sin_family = AF_INET;
++	fromdriv.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //htonl(INADDR_LOOPBACK);
++	fromdriv.sin_port = htons(EAPD_WKSP_MEVENT_UDP_SPORT);
++
++	/* Create socket */
++	reuse=1;
++	if (( evt_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
++		//WPRINT(W_ERROR, "Unable to create socket.\n");
++		err = -1;
++	}
++	else if ( (err = setsockopt(evt_sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse))) < 0) {
++		//WPRINT(W_ERROR, "Unable to setsockopt to loopback socket %d.\n", evt_sock);
++	}
++	else if ( (err = bind(evt_sock, (struct sockaddr *)&fromdriv, sizeof(struct sockaddr))) < 0) {
++		//WPRINT(W_ERROR, "Unable to bind to loopback socket %d.\n", evt_sock);
++	}
+ 
+ 	if ( err < 0) {
+ 		//WPRINT(W_ERROR, "Failure. Close socket.\n");
+-		if(evt_sock >= 0) {close(evt_sock); printf("\033[0;32m [Failure. Close socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);}
++		if(evt_sock >= 0) {
++			close(evt_sock);
++			printf("\033[0;32m [Failure. Close socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++		}
+ 	}
+-    if(evt_sock<0)
+-        printf("\033[0;32m [Create drv_evt_sock fail. ---> %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
+-
+-    * drv_evt_sock = evt_sock;
+-
+-    // TEST: Get Event from driver
+-    /*while(1){
+-        bytes = recvfrom(evt_sock, pkt, len, 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
+-        dpkt = (bcm_event_t *)pkt;
+-        type = ntohl(dpkt->event.event_type);
+-        printf("\033[0;32;33m [KAREN TEST %s:%d event_type_bytes=%d  event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, bytes, type);
+-
+-        switch(type){
+-    		case WLC_E_ASSOC_IND:
+-                printf("\033[0;32m [KAREN TEST    %s:%d   WLC_E_ASSOC_IND=%d] \033[0m \n", __FUNCTION__, __LINE__,WLC_E_ASSOC_IND);
+-                break;
+-    		case WLC_E_REASSOC_IND:
+-            case WLC_E_PROBREQ_MSG_RX:
+-                printf("\033[0;32m [KAREN TEST    %s:%d   WLC_E_PROBREQ_MSG_RX] \033[0m \n", __FUNCTION__, __LINE__);
+-                break;
+-        }
+-    }
+-    // Close socket
+-    close(evt_sock); */
++	if(evt_sock<0) {
++		//WPRINT(W_ERROR, "Create drv_evt_sock fail.\n");
++	}
++	*drv_evt_sock = evt_sock;
+ 
++	return;
+ }
+ 
+ void zybsa_peer_drv_events_handler(bcm_event_t *drv_msg, int drv_event, struct bsa_peer_entity *bsa_peer){
+@@ -1237,15 +1035,11 @@
+     /*struct bsa_drv_peer_event_data *pdata;
+     */
+ 
+-    switch(drv_event){
++	switch(drv_event){
+         case WLC_E_PROBREQ_MSG_RX:
+-			//zyWifiGetIfHwAddr(drv_msg->event.ifname, bssid);
+-			//zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
+-			//printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
+-			//printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
+ 			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, drv_msg);
+ 			break;
+-        case WLC_E_ASSOC_IND:
++		case WLC_E_ASSOC_IND:
+ 			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, drv_msg);
+ 			break;
+         case WLC_E_DEAUTH:
+@@ -1255,6 +1049,7 @@
+         case WLC_E_REASON_BSSTRANS_REQ:
+ 			break;
+         default:
++#if 0 //Peter
+ 			zyWifiGetIfHwAddr(drv_msg->event.ifname, bssid);
+ 			zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
+ 			printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
+@@ -1270,41 +1065,43 @@
+ 			printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.bsscfgidx));
+ 			printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
+ 			printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
++#endif
+ 			break;
+ 	}
++	return;
+ }
+ 
+ zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid){
+ 	int fd;
+-    struct ifreq ifr;
+-    unsigned char *mac = NULL;
++	struct ifreq ifr;
++	unsigned char *mac = NULL;
+ 	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
+ 
+-    memset(&ifr, 0, sizeof(ifr));
+-    fd = socket(AF_INET, SOCK_DGRAM, 0);
+-    ifr.ifr_addr.sa_family = AF_INET;
+-    strncpy(ifr.ifr_name , ifname , IFNAMSIZ-1);
++	memset(&ifr, 0, sizeof(ifr));
++	fd = socket(AF_INET, SOCK_DGRAM, 0);
++	ifr.ifr_addr.sa_family = AF_INET;
++	strncpy(ifr.ifr_name , ifname , IFNAMSIZ-1);
+ 
+-    if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr)) {
+-        mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
++	if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr)) {
++		mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
+ 		ret = ZCFG_SUCCESS;
+-    }
+-    memcpy(bssid,mac,ETH_ALEN);
+-    close(fd);
+-    return ret;
++	}
++	memcpy(bssid,mac,ETH_ALEN);
++	close(fd);
++	return ret;
+ }
+ 
+ zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr){
+-    zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
+-    if(ether_addr!=NULL){
+-        sprintf(sta_mac, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ether_addr[0], ether_addr[1], ether_addr[2], ether_addr[3], ether_addr[4], ether_addr[5]);
+-        ret = ZCFG_SUCCESS;
+-    }
+-    return ret;
++	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
++	if (ether_addr!=NULL) {
++		sprintf(sta_mac, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ether_addr[0], ether_addr[1], ether_addr[2], ether_addr[3], ether_addr[4], ether_addr[5]);
++		ret = ZCFG_SUCCESS;
++	}
++	return ret;
+ }
+ 
+ #define ID_CURSPEC_SEP '('
+-zcfgRet_t zyWlanGetCurrentChannelInfo(bcm_event_t *drv_msg, struct ChSpec *chspec)
++zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec)
+ {
+ 	char cmd[100] = {0};
+ 	FILE *fp = NULL;
+@@ -1313,13 +1110,11 @@
+ 	int bandwith = 0;
+ 	static char *filePath = "/tmp/.cur_channel";
+ 
+-	if(drv_msg == NULL || drv_msg->event.ifname == NULL ||
+-		strncmp(drv_msg->event.ifname, "wl", 2))
+-	{
++	if(ifname == NULL || strncmp(ifname, "wl", 2)) {
+ 		return ZCFG_INVALID_ARGUMENTS;
+ 	}
+ 	// AP chanspec
+-	sprintf(cmd, "wlctl -i %s chanspec > %s", drv_msg->event.ifname, filePath);
++	sprintf(cmd, "wlctl -i %s chanspec > %s", ifname, filePath);
+ 	system(cmd);
+ 	fp = fopen(filePath, "r");
+ 
+@@ -1419,62 +1214,65 @@
+ }
+ 
+ int zygetAntennaNum(char *mcs){
+-    int AntennaNum=0, index=0, i;
+-    char *tmp, *tmp2, *strEnd;
++	int AntennaNum=0, index=0, i;
++	char *tmp, *tmp2, *strEnd;
+ 
+-    if(mcs == NULL) return -1;
+-    strEnd= mcs+strlen(mcs);
+-    tmp=mcs;
+-    while(tmp < strEnd){
+-        if(*tmp>='0' && *tmp<='9'){
+-            i=(int)strtof(tmp,&tmp2);
+-            index=(i>index)?i:index;
+-        }
+-        tmp++;
+-    }
+-    switch(index) {
+-    case 7:
+-        AntennaNum=1;
+-        break;
+-    case 15:
+-        AntennaNum=2;
+-        break;
+-    case 23:
+-        AntennaNum=3;
+-        break;
+-    default:
+-        AntennaNum=0;
+-        break;
+-    }
+-    return AntennaNum;
++	if (mcs == NULL) {
++		return -1;
++	}
++	strEnd= mcs+strlen(mcs);
++	tmp=mcs;
++	while (tmp < strEnd) {
++		if (*tmp>='0' && *tmp<='9') {
++			i=(int)strtof(tmp,&tmp2);
++			index=(i>index)?i:index;
++		}
++		tmp++;
++	}
++	switch(index) {
++	case 7:
++		AntennaNum=1;
++		break;
++	case 15:
++		AntennaNum=2;
++		break;
++	case 23:
++		AntennaNum=3;
++		break;
++	default:
++		AntennaNum=0;
++		break;
++	}
++	return AntennaNum;
+ }
+ 
+ void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta)
+ {
+-    static char *filePath2 = "/tmp/.sta_rssi";
+-    char buf[256];
+-    char macAddr[18]={0};
+-    int len = sizeof(buf)-1;
+-    FILE *fp = NULL;
+-
+-    sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-    printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+-
+-    do{
+-        sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
+-        system(buf);
+-    	if((fp = fopen(filePath2, "r"))){
+-    		if(fgets(buf, len, fp) != NULL){
+-    			//if(buf[0] == '-') sta->rssi = atoi(buf);
+-    			sta->rssi = atoi(buf);
+-    		}
+-    		fclose(fp);
+-    		//unlink(filePath2);
+-    		if(sta->rssi==0)
+-                sleep(1);
+-    	}
+-    }while(sta->rssi==0);
++	static char *filePath2 = "/tmp/.sta_rssi";
++	char buf[256];
++	char macAddr[18]={0};
++	int len = sizeof(buf)-1;
++	FILE *fp = NULL;
++
++	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++	printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
++	do {
++		sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
++		system(buf);
++		if ((fp = fopen(filePath2, "r"))) {
++			if (fgets(buf, len, fp) != NULL) {
++			//if(buf[0] == '-') sta->rssi = atoi(buf);
++				sta->rssi = atoi(buf);
++			}
++			fclose(fp);
++			unlink(filePath2);
++			if (sta->rssi==0) {
++				sleep(1);
++			}
++		}
++	} while(sta->rssi==0);
++	return;
+ }
+ 
+ int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type)
+@@ -1484,17 +1282,20 @@
+ 	int len = sizeof(buf)-1;
+ 	unsigned int flags = 0, ht_flags = 0, vht_flags = 0;
+ 	char rate_set[256];
+-    char mcs_set[256];
++	char mcs_set[256];
+ 	static char *filePath = "/tmp/.sta_results";
+ 	char macAddr[18]={0};
+-    char bandwidth[10]={0};
+-	if(ifname == NULL || mac == NULL || sta == NULL) return -1;
++	char bandwidth[10]={0};
++
++	if(ifname == NULL || mac == NULL || sta == NULL) {
++		return -1;
++	}
+ 
+ 	//memset(sta, 0, sizeof(brcm_wl_sta_st_s));
+ 	memset(rate_set, 0, sizeof(rate_set));
+-    memset(mcs_set, 0, sizeof(mcs_set));
+-    sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-    printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++	memset(mcs_set, 0, sizeof(mcs_set));
++	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++	printf("[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
+ 
+@@ -1506,15 +1307,16 @@
+ 				*tmp = '\0';
+ 				tmp2 = tmp+1;
+ 			}
+-			else tmp2 = NULL;
++			else {
++				tmp2 = NULL;
++			}
+ 
+ 			tmp = buf;
+-
+-			if(tmp2){ // check has value
++			if (tmp2) { // check has value
+ 				if ((str = strstr(tmp,"rate of last tx pkt"))) {
+-					if((tmp3 = strstr(tmp2,"kbps")))
++					if ((tmp3 = strstr(tmp2,"kbps")))
+ 						*tmp3 = '\0';
+-					if((tmp3 = strchr(tmp2,'-')))
++					if ((tmp3 = strchr(tmp2,'-')))
+ 						*tmp3 = '\0';
+ 					sta->lastTxRate = strtoul(tmp2, NULL, 0);
+ 				}
+@@ -1529,16 +1331,15 @@
+ 					tmp3 = str+5;
+ 					flags = strtoul(tmp3, NULL, 0);
+ 				}
+-
+ 				else if ((str = strstr(tmp,"HT caps"))) {
+ 					tmp3 = str+7;
+ 					ht_flags = strtoul(tmp3, NULL, 0);
+-                    if (str = strstr(tmp2,"SGI20")) {
+-                        sprintf(bandwidth, "SGI20");
+-				    }
+-                    if (str = strstr(tmp2,"SGI40")) {
+-                        sprintf(bandwidth, "SGI40");
+-				    }
++					if (str = strstr(tmp2,"SGI20")) {
++						sprintf(bandwidth, "SGI20");
++					}
++					if (str = strstr(tmp2,"SGI40")) {
++						sprintf(bandwidth, "SGI40");
++					}
+ 				}
+ 				else if ((str = strstr(tmp,"VHT caps"))) {
+ 					tmp3 = str+8;
+@@ -1548,7 +1349,7 @@
+ 					tmp3 = str+8;
+ 					strncpy(rate_set, tmp3, sizeof(rate_set)-1);
+ 				}
+-                else if ((str = strstr(tmp,"MCS SET"))) {
++				else if ((str = strstr(tmp,"MCS SET"))) {
+ 					tmp3 = str+10;
+ 					strncpy(mcs_set, tmp3, sizeof(mcs_set)-1);
+ 				}
+@@ -1587,41 +1388,47 @@
+ 			if (flags & WL_STA_ASSOC) {
+ 				if (flags & WL_STA_VHT_CAP) {
+ 					sta->standard = IEEE80211_WLPROTO_11AC;
+-					if (vht_flags & WL_STA_SGI160) // if no SGI ??
++					if (vht_flags & WL_STA_SGI160) { // if no SGI ??
+ 						sta->bandwidth = 160;
+-					else
++					}
++					else {
+ 						sta->bandwidth = 80;
++					}
+ 				}
+ 				else if (ht_flags != 0) {
+ 					sta->standard = IEEE80211_WLPROTO_11N;
+ 					//if(ht_flags & WL_STA_CAP_40MHZ)
+-						sta->bandwidth = (!strcmp(bandwidth,"SGI40"))?40:20;
++					sta->bandwidth = (!strcmp(bandwidth,"SGI40")) ? 40 : 20;
+ 				}
+ 				else {
+-                    sta->bandwidth = 20 ;
+-                    // BAND_A is 5G
+-					if(zycheckWlBand(ifname) == BAND_A){
++					sta->bandwidth = 20 ;
++					// BAND_A is 5G
++					if (zycheckWlBand(ifname) == BAND_A) {
+ 						sta->standard = IEEE80211_WLPROTO_11A;
+ 					}
+-					else{
+-						if (zygetMaxRateSet(rate_set) > 11)
++					else {
++						if (zygetMaxRateSet(rate_set) > 11) {
+ 							sta->standard = IEEE80211_WLPROTO_11G;
+-						else
++						}
++						else {
+ 							sta->standard = IEEE80211_WLPROTO_11B;
++						}
+ 					}
+ 				}
+ 			}
+ 		}
+ 
+-        sta->rx_ss_info=zygetAntennaNum(mcs_set);
++		sta->rx_ss_info=zygetAntennaNum(mcs_set);
+ 
+-        if(sta->bandwidth==20)
+-            sta->max_phy_rate=Max_Phy_Rate20(sta->rx_ss_info);
+-        else if(sta->bandwidth==40)
+-            sta->max_phy_rate=Max_Phy_Rate40(sta->rx_ss_info);
++		if (sta->bandwidth==20) {
++			sta->max_phy_rate=Max_Phy_Rate20(sta->rx_ss_info);
++		}
++		else if (sta->bandwidth==40) {
++			sta->max_phy_rate=Max_Phy_Rate40(sta->rx_ss_info);
++		}
+ 
+ 		fclose(fp);
+-		//unlink(filePath);
++		unlink(filePath);
+ 	}
+ 
+ 	//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta->standard, sta->authState, sta->rssi, sta->bandwidth, sta->rx_ss_info, sta->max_phy_rate);
+@@ -1659,22 +1466,25 @@
+ 	struct msghdr msg;
+ 	uint8_t *tx_buff = NULL, *pos;
+ 	struct bsa_event_info *event_buffer;
+-    struct ChSpec chanspec;
+-    struct zy_sta_info_t sta_info;
++	struct ChSpec chanspec;
++	struct zy_sta_info_t sta_info;
+ 	uint32_t cnt = 0;
+-    tx_buff = malloc(BSA_MAX_EVENT_LEN);
+-    memset(&sta_info, 0, sizeof(sta_info));
+-	if (!tx_buff)
++
++	if (!tx_buff) {
+ 		return -ENOMEM;
++	}
++	if (!netlink || (netlink->write_sock == 0)){
++		return -EINVAL;
++	}
++	memset(&sta_info, 0, sizeof(sta_info));
++	tx_buff = malloc(BSA_MAX_EVENT_LEN);
+ 	event_buffer = (void *)tx_buff;
+ 
+-    if (!netlink || (netlink->write_sock == 0)){
+-        printf("\033[0;32m [KAREN TEST    %s:%d Create netlink->write_sock faile] \033[0m \n", __FUNCTION__, __LINE__);
+-		return -EINVAL;
+-    }
+-    switch (event_id) {
+-        case BSA_EVENT_PROBE_REQ:
+-			//printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
++	switch (event_id) {
++		case BSA_EVENT_PROBE_REQ:
++#if 0 //Peter
++			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
++#endif
+ 			//probe_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+ 			event_buffer->event_id = htole16(BSA_EVENT_PROBE_REQ);
+@@ -1684,13 +1494,15 @@
+ 			preq_info = (void *)&event_buffer->payload;
+ 			preq_info->curr_band = htole16(BSA_OPER_BAND_2G);
+ 			memcpy(preq_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n", MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac));
++#if 0 //Peter
++			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n",
++				MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac));
++#endif
+ 			zyget_sta_info(drv_msg->event.ifname, preq_info->sta_mac, &sta_info, 'b');
++/*** Chihhao-Ask BRCM and modify the following. ***/
+ 			//zyget_sta_rssi(drv_msg->event.ifname, preq_info->sta_mac, &sta_info);
+ 			//preq_info->rssi = sta_info.rssi - BSA_RSSI_CORRECTION;
+-			//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
+-			zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
+-			//printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac), preq_info->channel, preq_info->curr_band, preq_info->sta_capab);
++			zyWlanGetCurrentChannelInfo(drv_msg->event.ifname, &chanspec);
+ 			preq_info->rx_ss_info = htole16(sta_info.rx_ss_info);
+ 			preq_info->max_phy_rate = htole16(sta_info.max_phy_rate);
+ 			bsa_get_reltime(&time);
+@@ -1703,8 +1515,10 @@
+ 			if(sta_info.standard==IEEE80211_WLPROTO_11AC)
+ 				preq_info->sta_capab |= BIT(4);
+ 			break;
+-        case BSA_EVENT_CONNECT_COMPLETE:
++		case BSA_EVENT_CONNECT_COMPLETE:
++#if 0 //Peter
+ 			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
++#endif
+ 			//connect_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+ 			event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+@@ -1715,15 +1529,16 @@
+ 			connect_info = (void *)&event_buffer->payload;
+ 			memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+ 			connect_info->curr_band = htole16(BSA_OPER_BAND_2G);
+-			zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
++			zyWlanGetCurrentChannelInfo(drv_msg->event.ifname, &chanspec);
+ 			connect_info->channel = chanspec.channel;
+ 
+ 			zyget_sta_info(drv_msg->event.ifname, connect_info->sta_mac, &sta_info, 'b');
+ 			zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
+-			printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
+ 
+ 			connect_info->rx_ss_info = htole16(sta_info.rx_ss_info);
+ 			connect_info->max_phy_rate = htole16(sta_info.max_phy_rate);
++/*** Chihhao-Ask BRCM station info. and modify the following. ***/
++/*** unknown-->IEEE802.11v support,  MUMIMO support ***/
+ 			//Bit0-3: supported bandwidth Bit3: IEEE802.11v support
+ 			//Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
+ 			connect_info->sta_capab=0;
+@@ -1733,14 +1548,20 @@
+ 				connect_info->sta_capab |= BIT(4);
+ 			connect_info->sta_capab |= BIT(6);
+ 
+-			printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac), connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
++#if 0 //Peter
++			printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n",
++				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
++				connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
++#endif
+ 
+ 			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
+ 					MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
+ 					connect_info->channel, connect_info->curr_band);*/
+ 			break;
+-        case BSA_EVENT_DISASSOC:
++		case BSA_EVENT_DISASSOC:
++#if 0 //Peter
+ 			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
++#endif
+ 			//sta_disconnect_event = (void *)(drv_event);
+ 			msg_len = STA_DISCONNECT_INFO_LEN;
+ 			event_buffer->event_id = htole16(BSA_EVENT_DISASSOC);
+@@ -1749,21 +1570,25 @@
+ 			event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
+ 			sta_disconnect_info = (void*)&event_buffer->payload;
+ 			memcpy(sta_disconnect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
++/*** Chihhao-Ask BRCM station info. and modify the following. ***/
++/*** unknown-->direction ***/
+ 			uint8_t direction=0;
+ 			sta_disconnect_info->direction = direction;
+ 			sta_disconnect_info->reason_code = htole16((uint16_t)drv_msg->event.reason);
++#if 0 //Peter
+ 			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n", MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac));
++#endif
+ 			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
+ 					MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
+ 					sta_disconnect_info->direction, sta_disconnect_info->reason_code);*/
+-		    break;
+-        default:
++			break;
++		default:
+ 			bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
+ 			free(tx_buff);
+ 			return -1;
+ 	}
+ 
+-    nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
++	nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+ 	memset(nlh, 0, NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+ 	nlh->nlmsg_len = NLMSG_LENGTH(msg_len);
+ 	nlh->nlmsg_pid = getpid();
+@@ -1787,7 +1612,9 @@
+ 	msg.msg_iovlen = 1;
+ 
+ 	if (sendmsg(netlink->write_sock, &msg, 0) < 0) {
++#if 0 //Peter
+         printf("\033[0;32m [KAREN TEST    %s:%d Sendmsg faile] \033[0m \n", __FUNCTION__, __LINE__);
++#endif
+ 		bsa_printf(BSA_WARN, "BSA_PEER: sendmsg failed reason=%s\n", strerror(errno));
+ 		free(tx_buff);
+ 		free(nlh);
+@@ -1799,250 +1626,5 @@
+ 
+ 	return 0;
+ }
+-#if 0
+-
+-
+-	if (!netlink || (netlink->write_sock == 0))
+-		return -EINVAL;
+-
+-	tx_buff = malloc(BSA_MAX_EVENT_LEN);
+-	if (!tx_buff)
+-		return -ENOMEM;
+-
+-	event_buffer = (void *)tx_buff;
+-
+-	switch (event_id) {
+-	case BSA_EVENT_PROBE_REQ:
+-		/*probe_event = (void *)(drv_event);
+-		msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+-		event_buffer->event_id = BSA_EVENT_PROBE_REQ;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		bsa_printf(BSA_DEBUG, "BSA_PEER: probe bssid="MACSTR"", MAC2STR(bssid));
+-		event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
+-		preq_info = (void *)&event_buffer->payload;
+-		memcpy(preq_info->sta_mac, probe_event->sta_mac, ETH_ALEN);
+-		preq_info->rssi = probe_event->rssi - BSA_RSSI_CORRECTION;
+-		preq_info->rx_ss_info = probe_event->rss;
+-		preq_info->max_phy_rate = probe_event->max_phy_rate;
+-		bsa_get_reltime(&time);
+-		preq_info->tstamp = time.sec;
+-		preq_info->curr_band = probe_event->curr_band;
+-		preq_info->channel = probe_event->channel;
+-		preq_info->sta_capab = probe_event->band_width;
+-		preq_info->sta_capab |= ((probe_event->vht_capab & 0x1)?0x10:0);
+-		preq_info->sta_capab |= ((probe_event->vht_capab & 0x2)?0x80:0);
+-		preq_info->sta_capab |= ((probe_event->bss_transition?0x8:0));
+-		preq_info->sta_capab |= (probe_event->mu_mimo_capab << 5);
+-		break;*/
+-	case BSA_EVENT_CONNECT_COMPLETE:
+-		connect_event = (void *)(drv_event);
+-		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+-		event_buffer->event_id = BSA_EVENT_CONNECT_COMPLETE;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-
+-		event_buffer->payload_len = sizeof(struct bsa_evt_sta_connect_info);
+-		connect_info = (void *)&event_buffer->payload;
+-		memcpy(connect_info->sta_mac, connect_event->sta_mac, ETH_ALEN);
+-		connect_info->rx_ss_info = connect_event->rss;
+-		connect_info->max_phy_rate = connect_event->max_phy_rate;
+-		connect_info->curr_band = connect_event->curr_band;
+-		connect_info->channel = connect_event->channel;
+-		connect_info->sta_capab = connect_event->band_width;
+-
+-		connect_info->sta_capab |= ((connect_event->vht_capab & 0x1)?0x10:0);
+-		connect_info->sta_capab |= ((connect_event->vht_capab & 0x2)?0x80:0);
+-		connect_info->sta_capab |= ((connect_event->bss_transition_support?0x8:0));
+-		connect_info->sta_capab |= (connect_event->mu_mimo_capab << 5);
+-		bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
+-				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
+-				connect_info->channel, connect_info->curr_band);
+-		break;
+-#if 0
+-	case BSA_EVENT_INTF_STATUS:
+-		intf_status_event = (void *)(drv_event);
+-		msg_len = INTERFACE_STATUS_INFO_LEN;
+-		event_buffer->event_id = BSA_EVENT_INTF_STATUS;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		event_buffer->payload_len = sizeof(struct bsa_evt_intf_status);
+-
+-		intf_status = (void *)&event_buffer->payload;
+-		intf_status->ifname_size = intf_status_event->ifname_size;
+-		strncpy((char *)intf_status->ifname, (char *)intf_status_event->ifname, IFNAMSIZ);
+-		intf_status->status = intf_status_event->status;
+-		bsa_printf(BSA_DEBUG, "BSA_PEER: Interface status event: bssid"MACSTR", status=%d",
+-				MAC2STR(event_buffer->bssid), intf_status->status);
+-		break;
+-	case BSA_EVENT_INTF_INFO:
+-		intf_info1 = (void *)(drv_event);
+-		msg_len = sizeof(struct bsa_event_info);
+-		event_buffer->event_id = BSA_EVENT_INTF_INFO;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(&event_buffer->bssid, bssid, ETH_ALEN);
+-		pos = event_buffer->payload;
+-		switch (intf_info1->cmd_spec) {
+-		case BSA_INTF_INFO_GEN_CMD:
+-		{
+-			uint8_t value[8];
+-			intf_info = &intf_info1->u.bsa_drv_gen_intf_info_var;
+-
+-			memcpy(value, intf_info->bssid, ETH_ALEN);
+-			*(uint16_t *)&value[ETH_ALEN] = intf_info->mdid;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_BSSID_MDID, value, 8);
+-
+-			if (intf_info->ifname) {
+-				int tlv_len = (strlen((char *)intf_info->ifname) + 4) & (~0x3); /* aligned to 4 bytes including string ending */
+-				uint16_t *ptr = (uint16_t *)pos;
+-				*(ptr++) = TLVTYPE_IFNAME;
+-				*(ptr++) = tlv_len;
+-				strcpy((char *)ptr, (char *)intf_info->ifname);
+-				pos += sizeof(struct bsa_tlv)+tlv_len;
+-			}
+-
+-			value[0] = intf_info->channel;
+-			value[1] = intf_info->band;
+-			value[2] = intf_info->opclass;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_CHANNEL_BAND, value, 3);
+-			value[0] = intf_info->drivercap;
+-			value[1] = intf_info->phytype;
+-			value[2] = intf_info->capinfo & 0xff;
+-			value[3] = intf_info->capinfo >> 8;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_INTERFACE_CAPABILITY, value, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_HT_CAPABILITY, &intf_info->htcap, sizeof(struct ieee80211_ie_htcap));
+-			pos += bsa_encap_tlv(pos, TLVTYPE_HT_OPERATION, &intf_info->htop, sizeof(struct ieee80211_ie_htinfo));
+-			if (intf_info->phytype==9) { /* vht */
+-				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_CAPABILITY, &intf_info->vhtcap, sizeof(struct ieee80211_ie_vhtcap));
+-				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_OPERATION, &intf_info->vhtop, sizeof(struct ieee80211_ie_vhtop));
+ 
+-			}
+-			pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &intf_info->beacon_interval, 2);
+-		}
+-		break;
+-		case BSA_INTF_INFO_FAT_CMD:
+-		{
+-			uint8_t value[4];
+-			intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
+-			value[0] = intf_fat_info->channel;
+-			value[1] = intf_fat_info->band;
+-			*(uint16_t *)&value[2] = intf_fat_info->avg_fat;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_AVERAGE_FAT, value, 4);
+-		}
+-		break;
+-		}
+-		event_buffer->payload_len = pos - event_buffer->payload;
+-		msg_len += event_buffer->payload_len;
+-		break;
+-	case BSA_EVENT_DISASSOC:
+-		sta_disconnect_event = (void *)(drv_event);
+-		msg_len = STA_DISCONNECT_INFO_LEN;
+-		event_buffer->event_id = BSA_EVENT_DISASSOC;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
+-		sta_disconnect_info = (void*)&event_buffer->payload;
+-		memcpy(sta_disconnect_info->sta_mac, sta_disconnect_event->sta_mac, ETH_ALEN);
+-		sta_disconnect_info->direction = sta_disconnect_event->direction;
+-		sta_disconnect_info->reason_code = sta_disconnect_event->reason_code;
+-		bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
+-				MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
+-				sta_disconnect_info->direction, sta_disconnect_info->reason_code);
+-		break;
+-	case BSA_EVENT_STA_PHY_STATS:
+-		bsa_dri_sta_stats = (void *)(drv_event);
+-		msg_len = sizeof (struct bsa_event_info);
+-		event_buffer->event_id = BSA_EVENT_STA_PHY_STATS;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		bsa_dri_sta_info = bsa_dri_sta_stats->ieee80211_bsa_sta_info_var;
+-		pos = event_buffer->payload;
+ 
+-		while (cnt < bsa_dri_sta_stats->num_sta) {
+-			pos += bsa_encap_tlv(pos, TLVTYPE_STA_MAC, bsa_dri_sta_info->sta_mac, ETH_ALEN);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_RX_PHYRATE, &bsa_dri_sta_info->rx_phy_rate, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_RX, &bsa_dri_sta_info->ts_last_rx_pkt, 8);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TX_PHYRATE, &bsa_dri_sta_info->tx_phy_rate, 4);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_TX, &bsa_dri_sta_info->ts_last_tx_pkt, 8);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &bsa_dri_sta_info->rssi_dbm, 4);
+-			bsa_dri_sta_info++;
+-			cnt++;
+-		}
+-		event_buffer->payload_len = pos - event_buffer->payload;
+-		msg_len += event_buffer->payload_len;
+-		break;
+-	case BSA_EVENT_STA_NONASSOC_STATS:
+-		bsa_dri_neighbour_report = (void *)(drv_event);
+-		msg_len = sizeof (struct bsa_event_info);
+-		cnt = 0;
+-		event_buffer->event_id = BSA_EVENT_STA_NONASSOC_STATS;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		bsa_dri_neighbour = bsa_dri_neighbour_report->nac_stats;
+-		pos = event_buffer->payload;
+-
+-		while (cnt < bsa_dri_neighbour_report->nac_entries) {
+-			uint32_t rssi_dbm = bsa_dri_neighbour->nac_avg_rssi;
+-			pos += bsa_encap_tlv(pos, TLVTYPE_STA_MAC, bsa_dri_neighbour->nac_txmac, ETH_ALEN);
+-			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &rssi_dbm, 4);
+-			bsa_dri_neighbour++;
+-			cnt++;
+-		}
+-		event_buffer->payload_len = pos - event_buffer->payload;
+-		msg_len += event_buffer->payload_len;
+-		break;
+-	case BSA_EVENT_BSS_TRANS_STATUS:
+-		drv_btm_resp_evt = (void *)(drv_event);
+-		msg_len = sizeof(struct bsa_event_info)+sizeof(struct bsa_evt_bss_trans_status);
+-		event_buffer->event_id = BSA_EVENT_BSS_TRANS_STATUS;
+-		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-		event_buffer->payload_len = sizeof(struct bsa_evt_bss_trans_status);
+-		bss_trans_status = (void*)&event_buffer->payload;
+-		memcpy( bss_trans_status->sta_mac, drv_btm_resp_evt->bsa_sta_mac, ETH_ALEN);
+-		bss_trans_status->status_code = drv_btm_resp_evt->bsa_btm_resp_status;
+-		break;
+-#endif
+-	default:
+-		bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
+-		free(tx_buff);
+-		return -1;
+-
+-	}
+-
+-	nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+-	memset(nlh, 0, NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+-	nlh->nlmsg_len = NLMSG_LENGTH(msg_len);
+-	nlh->nlmsg_pid = getpid();
+-	nlh->nlmsg_type = BSA_PEER_EVENT;
+-	nlh->nlmsg_flags = 0;
+-
+-	memcpy(NLMSG_DATA(nlh), tx_buff, msg_len);
+-
+-	memset(&dest_addr, 0, sizeof(dest_addr));
+-	dest_addr.nl_family = AF_NETLINK;
+-	dest_addr.nl_pid = 0;
+-	dest_addr.nl_groups = RTMGRP_NOTIFY;
+-
+-	iov.iov_base = (void *)nlh;
+-	iov.iov_len = nlh->nlmsg_len;
+-
+-	memset(&msg, 0, sizeof(msg));
+-	msg.msg_name = (void *)&dest_addr;
+-	msg.msg_namelen = sizeof(dest_addr);
+-	msg.msg_iov = &iov;
+-	msg.msg_iovlen = 1;
+-
+-	if (sendmsg(netlink->write_sock, &msg, 0) < 0) {
+-		bsa_printf(BSA_WARN, "BSA_PEER: sendmsg failed reason=%s\n", strerror(errno));
+-		free(tx_buff);
+-		free(nlh);
+-		return -1;
+-	}
+-
+-	free(tx_buff);
+-	free(nlh);
+-
+-	return 0;
+-}
+-#endif
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-04-09 11:15:04.148349656 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-04-09 11:15:04.188349433 +0800
+@@ -73,7 +73,7 @@
+ void zybsa_peer_drv_events_handler(bcm_event_t * msg, int drv_event, struct bsa_peer_entity *bsa_peer);
+ zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
+ zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr);
+-zcfgRet_t zyWlanGetCurrentChannelInfo(bcm_event_t *drv_msg, struct ChSpec *chspec);
++zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec);
+ int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id, 	bcm_event_t *drv_msg);
+ int zygetMaxRateSet(char *rate_set);
+ int zycheckWlBand(const char *ifname);

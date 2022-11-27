@@ -1,0 +1,32 @@
+Index: linux-2.6.36/net/ipv4/igmp.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/igmp.c	2017-06-27 15:34:00.648262536 +0800
++++ linux-2.6.36/net/ipv4/igmp.c	2017-06-27 15:36:46.536258997 +0800
+@@ -149,6 +149,12 @@
+ static int ip_mc_add_src(struct in_device *in_dev, __be32 *pmca, int sfmode,
+ 			 int sfcount, __be32 *psfsrc, int delta);
+ 
++#ifdef TCSUPPORT_RA_HWNAT
++	extern int (*wan_multicast_undrop_hook)(void);
++#else
++	static int (*wan_multicast_undrop_hook)(void) = NULL;
++#endif
++
+ static void ip_ma_put(struct ip_mc_list *im)
+ {
+ 	if (atomic_dec_and_test(&im->refcnt)) {
+@@ -1996,6 +2002,14 @@
+ 	err = 0;
+ done:
+ 	rtnl_unlock();
++
++#ifdef TCSUPPORT_XPON_IGMP
++	if(wan_multicast_undrop_hook)
++	{
++		wan_multicast_undrop_hook();
++	}
++#endif
++
+ 	return err;
+ }
+ EXPORT_SYMBOL(ip_mc_join_group);

@@ -1,0 +1,22 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-22 20:12:31.773926866 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-22 20:12:52.949801507 +0800
+@@ -385,8 +385,6 @@
+ 	drv_msg = (bcm_event_t *)pkt;
+ 	wlem = &(drv_msg->event);
+ 
+-	zyBsaPeerParseNetLink(wlem);
+-
+ 	/* change endian */
+ 	wlem->version = ntohs(wlem->version);
+ 	wlem->flags = ntohs(wlem->flags);
+@@ -396,6 +394,8 @@
+ 	wlem->auth_type = ntohl(wlem->auth_type);
+ 	wlem->datalen = ntohl(wlem->datalen);
+ 
++	zyBsaPeerParseNetLink(wlem);
++
+ 	zyWifiGetIfHwAddr(wlem->ifname, bssid);
+ 
+ 	switch (wlem->event_type) {

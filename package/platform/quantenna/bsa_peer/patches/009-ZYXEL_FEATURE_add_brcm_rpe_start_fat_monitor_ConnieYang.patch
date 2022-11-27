@@ -1,0 +1,301 @@
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-04-20 09:19:28.119707453 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-04-20 09:19:28.287707447 +0800
+@@ -27,9 +27,9 @@
+ #QTN
+ CFLAGS += -I../include/
+ 
+-#CFLAGS += -Wall -Werror
++#CFLAGS += -g -Wall -Werror
+ CFLAGS += -DCONFIG_QTN_BSA_SUPPORT
+-CFLAGS += -ljson
++CFLAGS += -ljson -pthread
+ 
+ 
+ BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-20 09:19:28.263707448 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-20 15:24:48.462932495 +0800
+@@ -304,7 +304,7 @@
+ 		}
+ 		fat_monitor_cmd = (struct bsa_cmd_start_fat_monitor_ds*)&bsa_cmd_buffer->payload;
+ 		fat_period = htole32(fat_monitor_cmd->fat_period);
+-		driver_cb->start_fat_monitor(bsa_peer, index, fat_monitor_cmd->ifname, fat_period);		
++		driver_cb->start_fat_monitor(bsa_peer, index, fat_period);		
+ 		break;
+ 
+ 	default:
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-20 09:19:28.267707447 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-20 09:19:28.287707447 +0800
+@@ -185,7 +185,7 @@
+ 
+ int main(int argc, char *argv[])
+ {
+-	int daemonize = 1;
++	int daemonize = 0;
+ 	char *pid_file = NULL;
+ 	int ret = 0;
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver.h	2017-04-20 09:19:28.243707448 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver.h	2017-04-20 09:19:28.287707447 +0800
+@@ -77,7 +77,7 @@
+ 	int (*get_associated_clients)(void *priv, int index);
+ 	int (*send_btm_req)(void *priv, int index, void *cmd_info);
+ #if 1 //Zyxel
+-	int (*start_fat_monitor)(void *priv, int index, uint8_t ifname[], uint32_t fat_period);
++	int (*start_fat_monitor)(void *priv, int index, uint32_t fat_period);
+ #endif
+ };
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-20 09:19:28.263707448 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-20 13:39:30.699155849 +0800
+@@ -18,7 +18,14 @@
+ #include "bsa_common_defs.h"
+ #include "bsa_peer_entity.h"
+ #include "bcmwifi_channels.h"
++#include <pthread.h>
++#include <sys/prctl.h>
+ 
++#define FAT_MONITOR_MIN_PERIOD 10
++
++static pthread_t fat_monitor_thread = 0;
++static pthread_mutex_t fat_monitor_mutex;
++static struct fat_monitor_result_t fat_monitor_result;
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ 
+@@ -159,7 +166,7 @@
+ 			sprintf(cmd, "zywlctl -i %s get_intf_info_gen > %s", ifname, file_path);
+ 			system(cmd);
+ 			intf_info_Jobj = json_object_from_file(file_path);
+-			printf("%s: %s\n", __FUNCTION__, json_object_to_json_string(intf_info_Jobj));
++			//printf("%s: %s\n", __FUNCTION__, json_object_to_json_string(intf_info_Jobj));
+ 
+ 			drv_event_gen_info = &drv_event_info->u.bsa_drv_gen_intf_info_var;
+ 			param_tmp = json_object_get_string(json_object_object_get(intf_info_Jobj, "ifname"));
+@@ -234,6 +241,7 @@
+ 		}
+ 		case BSA_INTF_INFO_FAT_CMD:
+ 		{
++#if 0			
+ 			sprintf(cmd, "zywlctl -i %s get_intf_info_fat > %s", ifname, file_path);
+ 			system(cmd);
+ 			intf_info_Jobj = json_object_from_file(file_path);
+@@ -247,6 +255,15 @@
+ 			drv_event_info->cmd_spec = sub_cmd;
+ 
+ 			json_object_put(intf_info_Jobj);
++#else
++			drv_event_fat_info = &drv_event_info->u.bsa_drv_intf_fat_info_var;
++			drv_event_fat_info->band = fat_monitor_result.band;
++			drv_event_fat_info->channel = fat_monitor_result.channel;
++			drv_event_fat_info->avg_fat = 10*(fat_monitor_result.avg_fat);
++
++			drv_event_info->cmd_spec = sub_cmd;
++#endif			
++
+ 			break;
+ 		}
+ 		default:
+@@ -728,10 +745,142 @@
+ 	return retval;
+ }
+ 
+-int bsa_brcm_start_fat_monitor(void *priv, int index, uint8_t ifname[], uint32_t fat_period) {
++uint16_t get_brcm_fat(char *ifname) {
++	char cmd[100] = {0};
++	static char *file_path = "/tmp/.fat_result";
++	json_object *intf_info_Jobj = NULL;
++	struct bsa_drv_intf_fat_info *drv_event_fat_info = NULL;
++	uint16_t fat = 0;
++
++	sprintf(cmd, "zywlctl -i %s get_intf_info_fat > %s", ifname, file_path);
++	system(cmd);
++	intf_info_Jobj = json_object_from_file(file_path);
++
++	fat_monitor_result.channel = json_object_get_int(json_object_object_get(intf_info_Jobj, "channel"));
++	fat_monitor_result.band = json_object_get_int(json_object_object_get(intf_info_Jobj, "band"));
++	fat = json_object_get_int(json_object_object_get(intf_info_Jobj, "avg_fat"));
++
++	json_object_put(intf_info_Jobj);
++	unlink(file_path);
++
++	return fat;
++}
++
++void *fat_monitor_periodically(void *arg) {
++	sigset_t mask;
++	int i = 0;
++	uint16_t fat = 0;
++	uint32_t sum_fat = 0;
++	uint16_t fat_monitor_times = 0;
++	uint32_t period = NULL;
++	time_t start_time, stop_time, curr_time, diff_time;
++	struct fat_monitor_thread_t *fat_monitor_params;
++	uint8_t ifname[BSA_IFNAMSIZ];
++
++	prctl(PR_SET_NAME, "fat_monitor", 0, 0, 0);
++
++	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
++	pthread_detach(pthread_self());
++
++	if(arg) {
++		fat_monitor_params = (struct fat_monitor_thread_t*)arg;
++		period = fat_monitor_params->period;
++		strcpy(ifname, fat_monitor_params->ifname);
++	}
++	else {
++		bsa_printf(BSA_ERROR, "BSA_PEER: no period for fat monitoring");
++		pthread_exit(NULL);
++		return;
++	}
++
++	start_time = time(NULL);
++	stop_time = start_time + period;
++	bsa_printf(BSA_DEBUG, "BSA_PEER: fat_monitor_periodically, start %d, stop %d, period %d, ifname %s\n", start_time, stop_time, period, ifname);
++	if(period < FAT_MONITOR_MIN_PERIOD) {
++		while(1) {
++			fat_monitor_result.avg_fat = get_brcm_fat(ifname);
++			bsa_printf(BSA_DEBUG, "BSA_PEER: avg_fat %d\n", fat_monitor_result.avg_fat);
++			curr_time = time(NULL);
++			if(curr_time < stop_time) {
++				diff_time = stop_time - curr_time;
++				sleep(diff_time);
++			}
++			start_time = stop_time;
++			stop_time = start_time + period;
++		}
++	}
++	else {
++		while(1) {
++			curr_time = time(NULL);
++			if(curr_time >= stop_time) {
++				fat_monitor_result.avg_fat = sum_fat/fat_monitor_times;
++				bsa_printf(BSA_DEBUG, "BSA_PEER: avg_fat %d\n", fat_monitor_result.avg_fat);
++				// reset 
++				sum_fat = 0;
++				fat_monitor_times = 0;
++				// reset start_time and stop_time
++				start_time = stop_time;
++				stop_time = start_time + period;
++			}
++			else if((curr_time+5) > stop_time) {
++				// if the current time is too close to the stop time, just end this round.
++				diff_time = stop_time - curr_time;
++				sleep(diff_time);
++			}
++			else {
++				fat = get_brcm_fat(ifname);
++				sum_fat += fat;
++				fat_monitor_times ++;
++				curr_time = time(NULL);
++				diff_time = stop_time - curr_time;
++				if(diff_time > FAT_MONITOR_MIN_PERIOD) {
++					sleep(FAT_MONITOR_MIN_PERIOD);
++				}
++				else {
++					sleep(diff_time);
++				}
++			}
++		}
++	}
++
++	if(arg) free(arg);
++	pthread_exit(NULL);
++
++	return;
++}
++
++int monitor_thread_init(struct fat_monitor_thread_t *fat_monitor_params) {
+ 	int retval = 0;
+ 
+-	printf("[%s] ifname %s, fat_period %d\n", __FUNCTION__, ifname, fat_period);
++	if(fat_monitor_thread > 0){
++		pthread_cancel(fat_monitor_thread);
++		pthread_join(fat_monitor_thread, NULL);
++		fat_monitor_thread = 0;
++	}
++	
++	pthread_mutex_init(&fat_monitor_mutex,NULL);
++	retval = pthread_create(&fat_monitor_thread, NULL, fat_monitor_periodically, (void *) fat_monitor_params);
++
++	return retval;
++}
++
++int bsa_brcm_start_fat_monitor(void *priv, int index, uint32_t fat_period) {
++	int retval = 0;
++	struct fat_monitor_thread_t *fat_monitor_params;
++
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Start fat monitor for ifname %s, period %d", bsa_conf_info[index].ifname, fat_period);
++
++	fat_monitor_params = (struct fat_monitor_thread_t*)malloc(sizeof(struct fat_monitor_thread_t));
++	strcpy(fat_monitor_params->ifname, bsa_conf_info[index].ifname);
++	fat_monitor_params->period = fat_period;
++
++	retval = monitor_thread_init(fat_monitor_params);
++	if(retval != 0){
++		bsa_printf(BSA_ERROR, "BSA_PEER: Cannot create fat_monitor_thread. err: %d. \n", retval);
++		return ZCFG_INTERNAL_ERROR;
++	}
++	bsa_printf(BSA_DEBUG, "BSA_PEER: Start fat_monitor_thread to check......\n");
++
+ 	return retval;
+ }
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-20 09:19:28.263707448 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-20 13:57:29.799117699 +0800
+@@ -196,19 +196,19 @@
+ 
+ struct bsa_cmd_start_monitor_ds {
+ 	uint8_t ifname_size;
+-	uint8_t ifname[19];
++	uint8_t ifname[BSA_IFNAMSIZ];
+ 	uint16_t period;
+ 	uint16_t duty_cycle;
+ }__attribute__((packed));
+ 
+ struct bsa_cmd_stop_monitor_ds {
+ 	uint8_t ifname_size;
+-	uint8_t ifname[IFNAMSIZ];
++	uint8_t ifname[BSA_IFNAMSIZ];
+ }__attribute__((packed));
+ 
+ struct bsa_cmd_start_fat_monitor_ds {
+ 	uint8_t ifname_size;
+-	uint8_t ifname[IFNAMSIZ];
++	uint8_t ifname[BSA_IFNAMSIZ];
+ 	uint32_t fat_period;
+ }__attribute__((packed));
+ 
+@@ -237,7 +237,21 @@
+ 	struct ieee80211_bsa_sta_info ieee80211_bsa_sta_info_var[IEEE80211_AID_DEF];
+ }__attribute__((packed));
+ 
++struct fat_monitor_thread_t {
++	uint8_t ifname[BSA_IFNAMSIZ];
++	uint32_t period;
++}__attribute__((packed));
++
++struct fat_monitor_result_t {
++	uint8_t channel;
++	uint8_t band;
++	uint16_t avg_fat;	
++}__attribute__((packed));
++
+ zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec);
+ void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta);
++uint16_t get_brcm_fat(char *ifname);
++void *fat_monitor_periodically(void *arg);
++int monitor_thread_init(struct fat_monitor_thread_t *fat_monitor_params);
+ 
+ #endif

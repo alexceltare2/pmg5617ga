@@ -1,0 +1,317 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-05-13 21:50:38.182527864 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-05-13 21:50:38.238527368 +0800
+@@ -389,6 +389,7 @@
+ 	struct bsa_evt_sta_disconnect_event_data sta_disconnect_event;
+ 	soniq_info_t soniq_info;
+ 	uint32 rss;
++	uint8 *probereqie;
+ 
+ 	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv, (socklen_t *)&sock_len);
+ 	drv_msg = (bcm_event_t *)pkt;
+@@ -417,17 +418,70 @@
+ 			bsa_brcm_get_channel_info_from_chanspec(ntohs(werxfd->channel), &chanspec);
+ 			probe_event.channel = chanspec.channel;
+ 
+-#if 0 //tmp
+-			probe_event.max_phy_rate = zyGetHTMaxPhyRate(werxfd->bandwidth40, werxfd->sgi, werxfd->supportedMCSSet, &rss);
+-			probe_event.rss = (uint16)rss;
+-			probe_event.band_width = werxfd->bandwidth40;
+-			probe_event.bss_transition = werxfd->bssTransition;
+-#else
+-			probe_event.max_phy_rate = ntohl(werxfd->rate);
+-			probe_event.rss = 1;
+-			probe_event.band_width = 1;
+-			probe_event.bss_transition = 0;
+-#endif
++			probereqie = (uint8 *)(werxfd) + sizeof(struct wl_event_rx_frame_data) + DOT11_MGMT_HDR_LEN;
++			soniq_info.flags = 0;
++			zyParseInformationElement(probereqie, wlem->datalen - sizeof(struct wl_event_rx_frame_data) - DOT11_MGMT_HDR_LEN, &soniq_info, wlem->event_type);
++			if (soniq_info.flags & (SONIQ_INFO_FLAGS_HT_CAPABILITY | SONIQ_INFO_FLAGS_EXTENDED_CAPABILITY)) {
++				probe_event.max_phy_rate = zyGetHTMaxPhyRate(soniq_info.bandwidth40, soniq_info.sgi, soniq_info.supportedMCSSet, &rss);
++				probe_event.rss = (uint16) rss;
++				probe_event.band_width = soniq_info.bandwidth40;
++				probe_event.bss_transition = soniq_info.bssTransition;
++
++				if (probe_event.rss > 8) {
++			/********************************************************************************************************************************
++				bsa_peer_netlink_receive:453 !!!!!!!!error receving probe request
++				probe_event.rss=61137, bandwidth40=1, sgi=3, supportedMCSSet=00000000000000000000000000000000
++
++
++				============ bsa_brcm_parse_netlink_event ============
++				wlem->version=2, wlem->flags=0x0, wlem->event_type=137, wlem->status=0, wlem->reason=0, wlem->auth_type=0, wlem->datalen=86
++				wlem->addr=ec:43:f6:73:3c:f9, wlem->ifname=wl0, wlem->ifidx=0, wlem->bsscfgidx=0
++				0001100BFFFFFFC3  5AFDFBBD00010002          ........Z.......
++				40000000FFFFFFFF  FFFFEC43F6733CF9          @..........C.s<.
++				FFFFFFFFFFFFF019  0000010882848B96          ................
++				8C1298243204B048  606C2D1A6E180200          ...$2..H`l-.n...
++				0000000000000000  0000000000000000          ................
++				000000000000
++				============ bsa_brcm_parse_netlink_event ============
++
++
++				ifname=wl0, curr_band=0, channel=11, sta_mac=ec:43:f6:73:3c:f9
++				band_width=1, bss_transition=226, vht_capab=12, mu_mimo_capab=0, max_phy_rate=0, rss=61137, rssi=-61
++			********************************************************************************************************************************/
++					int ii, bsa_debug_level_bak, bsa_debug_filter_bak;
++
++					if (BSA_PRINT(BSA_ERROR)) {
++						printf("%s:%d !!!!!!!!error receving probe request\n", __FUNCTION__, __LINE__);
++						printf("probe_event.rss=%d, bandwidth40=%d, sgi=%d, supportedMCSSet=", probe_event.rss, soniq_info.bandwidth40, soniq_info.sgi);
++        	            for (ii = 0 ; ii < 16 ; ii++) {
++            	            printf("%02x", soniq_info.supportedMCSSet[ii]);
++                	    }
++						printf("\n");
++
++						bsa_debug_level_bak = bsa_debug_level;
++						bsa_debug_filter_bak = bsa_debug_filter;
++						bsa_debug_level = BSA_DEBUG;
++						bsa_debug_filter = BSA_BIT_PROBE_REQ;
++						bsa_brcm_parse_netlink_event(wlem);
++						bsa_debug_level = bsa_debug_level_bak;
++						bsa_debug_filter = bsa_debug_filter_bak;
++
++						printf("ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
++										wlem->ifname, probe_event.curr_band, probe_event.channel, MAC2STR(probe_event.sta_mac));
++						printf("band_width=%d, bss_transition=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d, rssi=%d\n\n\n",
++										probe_event.band_width, probe_event.bss_transition, probe_event.vht_capab, probe_event.mu_mimo_capab,
++										probe_event.max_phy_rate, probe_event.rss, probe_event.rssi);
++					}
++					break;
++				}
++			}
++			else {
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, wlem->event_type)) {
++					printf("%s:%d not enough probe request information, skip this probe request, flags=0x%X\n", __FUNCTION__, __LINE__, soniq_info.flags);
++				}
++				break;
++			}
++
+ 			if (probe_event.curr_band == BSA_OPER_BAND_2G) {
+ 				probe_event.vht_capab = 0;
+ 				probe_event.mu_mimo_capab = 0;
+@@ -439,7 +493,7 @@
+ 				//probe_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
+ 			}
+ 
+-			if ((BSA_DEBUG >= bsa_debug_level) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type))) {
++			if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, wlem->event_type)) {
+ 				printf("%s:%d BSA_EVENT_PROBE_REQ, ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
+ 								__FUNCTION__, __LINE__, wlem->ifname, probe_event.curr_band, probe_event.channel, MAC2STR(probe_event.sta_mac));
+ 				printf("		band_width=%d, bss_transition=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d, rssi=%d\n",
+@@ -465,7 +519,7 @@
+ 			connect_event.curr_band = BSA_OPER_BAND_2G;
+ 			bsa_brcm_get_current_channel_info(wlem->ifname, &chanspec);
+ 			connect_event.channel = chanspec.channel;
+-			zyParseInformationElement((uint8 *)((bcm_event_t *)pkt + 1), wlem->datalen, &soniq_info);
++			zyParseInformationElement((uint8 *)((bcm_event_t *)pkt + 1), wlem->datalen, &soniq_info, wlem->event_type);
+ 			connect_event.band_width = soniq_info.bandwidth40;
+ 			connect_event.bss_transition_support = soniq_info.bssTransition;
+ 
+@@ -484,7 +538,7 @@
+ 				//connect_event.rss = (uint16)rss;
+ 			}
+ 
+-			if ((BSA_DEBUG >= bsa_debug_level) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type))) {
++			if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, wlem->event_type)) {
+ 				printf("%s:%d BSA_EVENT_CONNECT_COMPLETE, ifname=%s, curr_band=%d, channel=%d, sta_mac=" MACSTR "\n",
+ 								__FUNCTION__, __LINE__, wlem->ifname, connect_event.curr_band, connect_event.channel, MAC2STR(connect_event.sta_mac));
+ 				printf("		band_width=%d, bss_transition_support=%d, vht_capab=%d, mu_mimo_capab=%d, max_phy_rate=%d, rss=%d\n",
+@@ -511,7 +565,7 @@
+         case WLC_E_REASON_BSSTRANS_REQ:
+ 			break;
+         default:
+-			if (BSA_DEBUG < bsa_debug_level) {
++			if (BSA_PRINT(BSA_DEBUG)) {
+ 				;
+ 			}
+ 			else {
+Index: bsa-1.0.1/bsa_peer/bsa_peer_common.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_common.c	2017-05-13 21:50:38.118528433 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_common.c	2017-05-13 21:50:38.238527368 +0800
+@@ -16,10 +16,11 @@
+ #include "bsa_peer_event.h"
+ #include "bsa_peer_common.h"
+ 
+-void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d)
++void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d, int event_type)
+ {
+ 	uint8 *t = body, *v;
+ 	int totlen = body_len, l;
++	int i;
+ 
+ 	while (totlen > 0) {
+ 		l = *(t + 1);
+@@ -33,6 +34,14 @@
+ 				d->bandwidth40 = ((HTCapabilityInfo[0]) & 0x02) ? (1) : (0);
+ 				d->sgi = ((HTCapabilityInfo[0] >> 5) & 0x3);
+ 				memcpy(d->supportedMCSSet, supportedMCSSet, 16);
++				d->flags |= SONIQ_INFO_FLAGS_HT_CAPABILITY;
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d HT Capabilities (45), bandwidth40=%d, sgi=%d, supportedMCSSet=", __FUNCTION__, __LINE__, d->bandwidth40, d->sgi);
++					for (i = 0 ; i < 16 ; i++) {
++						printf("%02x", supportedMCSSet[i]);
++					}
++					printf("\n");
++				}
+ 			}
+ 			break;
+ 		case 127: /* Extended Capabilities (127) */
+@@ -45,9 +54,63 @@
+ 				else {
+ 					d->bssTransition = 0;
+ 				}
++				d->flags |= SONIQ_INFO_FLAGS_EXTENDED_CAPABILITY;
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d Extended Capabilities (127), bssTransition=%d\n", __FUNCTION__, __LINE__, d->bssTransition);
++				}
++			}
++			break;
++		case 0: /* SSID (0) */
++			{
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d SSID (0), SSID=", __FUNCTION__, __LINE__);
++					for (i = 0 ; i < l ; i++) {
++						printf("%c", v[i]);
++					}
++					printf("\n");
++				}
++			}
++			break;
++		case 1: /* Supported Rates (1) */
++			{
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d Supported Rates (1), Supported Rates=", __FUNCTION__, __LINE__);
++					for (i = 0 ; i < l ; i++) {
++						printf("%02X", v[i]);
++					}
++					printf("\n");
++				}
++			}
++			break;
++		case 3: /* DSSS Parameter Set (3) */
++			{
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d DSSS Parameter Set (3), current channel=%d\n", __FUNCTION__, __LINE__, *v);
++				}
+ 			}
+ 			break;
++		case 50: /* Extended Supported Rates (50) */
++			{
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d Extended Supported Rates (50), Supported Rates=", __FUNCTION__, __LINE__);
++					for (i = 0 ; i < l ; i++) {
++						printf("%02X", v[i]);
++					}
++					printf("\n");
++				}
++			}
++			break;
++		case 221: /* Vendor Specific (221) */
+ 		default:
++			{
++				if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, event_type)) {
++					printf("%s:%d IE ID=%d, IE LEN=%d, IE VALUE=", __FUNCTION__, __LINE__, *t, l);
++					for (i = 0 ; i < l ; i++) {
++						printf("%02X", v[i]);
++					}
++					printf("\n");
++				}
++			}
+ 			break;
+ 		}
+ 
+@@ -209,6 +272,9 @@
+ 			mask = mask << 1;
+ 		}
+ 	}
++	if (BSA_PRINT(BSA_DEBUG)) {
++		printf("%s:%d rx_ss=%d, max=%d\n", __FUNCTION__, __LINE__, *rx_ss, max);
++	}
+ 	return max;
+ }
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-05-13 21:50:38.206527652 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-05-13 21:51:08.766256689 +0800
+@@ -7,6 +7,11 @@
+ #include "net80211/ieee80211_ioctl.h"
+ #endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
++
++/* from bcmdrivers/broadcom/net/wl/impl24/main/src/common/include/proto/802.11.h */
++#define	DOT11_MGMT_HDR_LEN	24		/* d11 management header length */
++
++
+ #define QTN_DRV_MLME_DISASSOC		2
+ #define QTN_DRV_MLME_DEAUTH		3
+ #define BSA_EVENT_BUFF_SIZE		250
+Index: bsa-1.0.1/bsa_peer/bsa_peer_common.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_common.h	2017-05-13 21:50:38.146528183 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_common.h	2017-05-13 21:50:38.242527332 +0800
+@@ -67,16 +67,23 @@
+ 	{12, BAND_24G, 40, CTLSB_UPPER, CHAN_LIST_LEN(EU_channel_set_12), EU_channel_set_12}
+ };
+ 
++
++
++#define SONIQ_INFO_FLAGS_HT_CAPABILITY			(1 << 0)
++#define SONIQ_INFO_FLAGS_EXTENDED_CAPABILITY	(1 << 1)
+ typedef struct soniq_info_s {
+ 	uint8 supportedMCSSet[16];
+ 	uint8 bandwidth40;
+ 	uint8 sgi;
+ 	uint8 bssTransition;
+-	uint8 reserved[1];
++	uint8 flags;
+ } soniq_info_t;
+ 
+ 
+-void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d);
++#define BSA_PRINT(l)					(l >= bsa_debug_level)
++#define	BSA_PRINT_WITH_FILTER(l, e)		(BSA_PRINT(l)) && (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(e))
++
++void zyParseInformationElement(uint8 *body, int body_len, soniq_info_t *d, int event_type);
+ int ieee80211_mcs2rate(int mcs, int mode, int sgi, int vht);
+ uint32 zyGetHTMaxPhyRate(uint8 bandwidth40, uint8 sgi2040, uint8 *supportedMCSSet, uint32 *rx_ss);
+ zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-05-13 21:50:38.206527652 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-05-13 21:51:08.838256055 +0800
+@@ -815,14 +815,10 @@
+ 	char ch;
+ 	signed char buf[32];
+ 
+-	if (BSA_DEBUG < bsa_debug_level) {
+-		return;
+-	}
++	if (BSA_PRINT_WITH_FILTER(BSA_DEBUG, wlem->event_type)) {
++		p = wlem->addr.octet;
++		d = (uint8 *)(wlem + 1);
+ 
+-	p = wlem->addr.octet;
+-	d = (uint8 *)(wlem + 1);
+-
+-	if (bsa_debug_filter & bsa_brcm_event_type_2_bsa_debug_filter(wlem->event_type)) {
+ 		printf("\n\n\n============ %s ============\n", __FUNCTION__);
+ 		printf("wlem->version=%d, wlem->flags=0x%x, wlem->event_type=%d, wlem->status=%d, wlem->reason=%d, wlem->auth_type=%d, wlem->datalen=%d\n",
+ 				wlem->version, wlem->flags, wlem->event_type, wlem->status, wlem->reason, wlem->auth_type, wlem->datalen);
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-05-13 21:50:38.118528433 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-05-13 21:51:58.989811466 +0800
+@@ -28,7 +28,7 @@
+ CFLAGS += -I../include/
+ 
+ #CFLAGS += -g -Wall -Werror
+-CFLAGS += -DCONFIG_QTN_BSA_SUPPORT
++CFLAGS += -DBUILD_SONIQ -DCONFIG_QTN_BSA_SUPPORT
+ CFLAGS += -ljson -pthread
+ 
+ 

@@ -1,0 +1,476 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-18 21:46:27.486944749 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-18 21:46:27.506944634 +0800
+@@ -43,11 +43,20 @@
+ EH0*/
+ #if 1 //Zyxel
+ #include <endian.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <proto/ethernet.h>
++#include <proto/bcmevent.h>
++#include "libzywlan.h"
++#include "zylib.h"
++#include "bcmwifi_channels.h"
+ #endif
+ #include "bsa_peer_event.h"
+-#if 1 //Zyxel
+-#include "bcmwifi_channels.h"
+-#else
++#if 0 //Zyxel
+ #include <netinet/ether.h>
+ #endif
+ 
+@@ -62,6 +71,11 @@
+ #endif
+ extern uint16_t vap_count;
+ 
++#if 1 //Zyxel
++static void zyBsaPeerParseNetLink(wl_event_msg_t *wlem);
++static uint8_t boradcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
++#endif
++
+ static int  get_bsa_conf_info(struct bsa_command * bsa_cmd_buff)
+ {
+ 	int i = 0;
+@@ -365,7 +379,7 @@
+ 	struct wl_event_rx_frame_data *werxfd;
+ 	struct bsa_drv_connect_compl_event_info connect_event;
+ 	struct bsa_evt_sta_disconnect_event_data sta_disconnect_event;
+-	struct zy_sta_info_t sta_info;
++	zy_sta_info_t sta_info;
+ 
+ 	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv, (socklen_t *)&sock_len);
+ 	drv_msg = (bcm_event_t *)pkt;
+@@ -414,8 +428,18 @@
+ 				//probe_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
+ 			}
+ 
+-			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, bssid,
+-											(uint8_t *)&probe_event, sizeof(struct bsa_drv_probe_event_info));
++			if (memcmp(boradcast_addr, bssid, ETH_ALEN)==0) {
++				int index;
++				for (index=0;index<vap_count;index++) {
++					if (bsa_conf_info[index].status) {
++						bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, bsa_conf_info[index].bssid,
++														(uint8_t *)&probe_event, sizeof(struct bsa_drv_probe_event_info));
++					}
++				}
++			} else {
++				bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, bssid,
++												(uint8_t *)&probe_event, sizeof(struct bsa_drv_probe_event_info));
++			}
+ 			break;
+ 		case WLC_E_ASSOC_IND:
+ 			memcpy(&connect_event.sta_mac, wlem->addr.octet, ETH_ALEN);
+@@ -975,7 +999,9 @@
+ 	return 0;
+ }
+ 
++#if 0 //Zyxel, move to top
+ static uint8_t boradcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
++#endif
+ 
+ static void bsa_peer_sub_events_handler(struct bsa_peer_entity *bsa_peer, char *custom,
+ 					size_t length)
+@@ -1318,7 +1344,7 @@
+ 	return;
+ }
+ 
+-void zyBsaPeerParseNetLink(wl_event_msg_t *wlem)
++static void zyBsaPeerParseNetLink(wl_event_msg_t *wlem)
+ {
+ 	int i, j = 0;
+ 	uint8 *d, *p;
+@@ -1387,69 +1413,6 @@
+ 	return ret;
+ }
+ 
+-#define ID_CURSPEC_SEP '('
+-zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec)
+-{
+-	char cmd[100] = {0};
+-	FILE *fp = NULL;
+-	char *cp;
+-	int chanspec = 0, channel = 0, sb = 0, sideband = CTLSB_NONE;
+-	int bandwith = 0;
+-	static char *filePath = "/tmp/.cur_channel";
+-
+-	if(ifname == NULL || strncmp(ifname, "wl", 2)) {
+-		return ZCFG_INVALID_ARGUMENTS;
+-	}
+-	// AP chanspec
+-	sprintf(cmd, "wlctl -i %s chanspec > %s", ifname, filePath);
+-	system(cmd);
+-	fp = fopen(filePath, "r");
+-
+-	if(fp != NULL) {
+-		while( fgets( cmd, sizeof(cmd), fp ) ) {
+-			cp = strchr(cmd, ID_CURSPEC_SEP);
+-			if(cp) {
+-				chanspec = strtol(cp+1, 0, 16);
+-				break;
+-			}
+-		}
+-		fclose(fp);
+-		unlink(filePath);
+-
+-		if(chanspec){
+-			if((chanspec & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40) {
+-				bandwith = 40;
+-				sb = chanspec & WL_CHANSPEC_CTL_SB_MASK;
+-				if(sb == WL_CHANSPEC_CTL_SB_LOWER){
+-					channel = (chanspec & WL_CHANSPEC_CHAN_MASK) - 2;
+-					sideband = CTLSB_LOWER;
+-				}
+-				else{
+-					channel = (chanspec & WL_CHANSPEC_CHAN_MASK) + 2;
+-					sideband = CTLSB_UPPER;
+-				}
+-			}
+-			else {
+-				bandwith = 20;
+-				channel = chanspec & WL_CHANSPEC_CHAN_MASK;
+-				sideband = CTLSB_NONE;
+-			}
+-			chspec->chanspec = chanspec;
+-			chspec->channel = channel;
+-			chspec->bw = bandwith;
+-			if(CHSPEC_IS2G(chanspec)) chspec->band = 2;
+-			else chspec->band = 5;
+-			chspec->sb = sideband;
+-
+-			return ZCFG_SUCCESS;
+-		}
+-	}
+-	else {
+-		printf("%s: error open file\n",__FUNCTION__);
+-	}
+-	return ZCFG_INTERNAL_ERROR;
+-}
+-
+ int zycheckWlBand(const char *ifname){
+ 	char buf[64] = {0}, *_ifname = NULL, *tmp;
+ 	int l, band = -1;
+@@ -1533,41 +1496,12 @@
+ 	return AntennaNum;
+ }
+ 
+-void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta)
+-{
+-	static char *filePath2 = "/tmp/.sta_rssi";
+-	char buf[256];
+-	char macAddr[18]={0};
+-	int len = sizeof(buf)-1;
+-	FILE *fp = NULL;
+-
+-	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+-
+-	do {
+-		sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
+-		system(buf);
+-		if ((fp = fopen(filePath2, "r"))) {
+-			if (fgets(buf, len, fp) != NULL) {
+-			//if(buf[0] == '-') sta->rssi = atoi(buf);
+-				sta->rssi = atoi(buf);
+-			}
+-			fclose(fp);
+-			unlink(filePath2);
+-			if (sta->rssi==0) {
+-				sleep(1);
+-			}
+-		}
+-	} while(sta->rssi==0);
+-	return;
+-}
+-
+-int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type)
++int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta, char type)
+ {
+ 	FILE *fp = NULL;
+ 	char buf[256], *tmp, *tmp2, *str, *tmp3;
+ 	int len = sizeof(buf)-1;
+-	unsigned int flags = 0, ht_flags = 0, vht_flags = 0;
++	unsigned int flags = 0, ht_flags = 0, vht_flags = 0, firstLine = 1;
+ 	char rate_set[256];
+ 	char mcs_set[256];
+ 	static char *filePath = "/tmp/.sta_results";
+@@ -1590,6 +1524,13 @@
+ 	system(buf);
+ 	if ((fp = fopen(filePath, "r"))) {
+ 		while (fgets(buf, len, fp) != NULL) {
++			if (firstLine) {
++				if ((strncmp(buf, "wlctl:", 6) == 0)) {
++					/* broadcom ==> wlctl: Bad Address */
++					break;
++				}
++				firstLine = 0;
++			}
+ 			if ((tmp = strchr(buf, ':')) != NULL) {
+ 				*tmp = '\0';
+ 				tmp2 = tmp+1;
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-18 21:46:27.442945005 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-18 21:46:27.506944634 +0800
+@@ -1,11 +1,123 @@
++#include <json/json.h>
++#include <endian.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <proto/ethernet.h>
++#include <proto/bcmevent.h>
++#include "libzywlan.h"
++#include "zylib.h"
+ #include "bsa_peer_event.h"
+ #include "bsa_driver.h"
+ #include "bsa_driver_brcm.h"
+ #include "bsa_wireless_copy.h"
+-#include <json/json.h>
++#include "bsa_includes.h"
++#include "bsa_common_defs.h"
++#include "bsa_peer_entity.h"
++#include "bcmwifi_channels.h"
++
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ 
++#define ID_CURSPEC_SEP '('
++zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec)
++{
++    char cmd[100] = {0};
++    FILE *fp = NULL;
++    char *cp;
++    int chanspec = 0, channel = 0, sb = 0, sideband = CTLSB_NONE;
++    int bandwith = 0;
++    static char *filePath = "/tmp/.cur_channel";
++
++    if(ifname == NULL || strncmp(ifname, "wl", 2)) {
++        return ZCFG_INVALID_ARGUMENTS;
++    }
++    // AP chanspec
++    sprintf(cmd, "wlctl -i %s chanspec > %s", ifname, filePath);
++    system(cmd);
++    fp = fopen(filePath, "r");
++
++    if(fp != NULL) {
++        while( fgets( cmd, sizeof(cmd), fp ) ) {
++            cp = strchr(cmd, ID_CURSPEC_SEP);
++            if(cp) {
++                chanspec = strtol(cp+1, 0, 16);
++                break;
++            }
++        }
++        fclose(fp);
++        unlink(filePath);
++
++        if(chanspec){
++            if((chanspec & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40) {
++                bandwith = 40;
++                sb = chanspec & WL_CHANSPEC_CTL_SB_MASK;
++                if(sb == WL_CHANSPEC_CTL_SB_LOWER){
++                    channel = (chanspec & WL_CHANSPEC_CHAN_MASK) - 2;
++                    sideband = CTLSB_LOWER;
++                }
++                else{
++                    channel = (chanspec & WL_CHANSPEC_CHAN_MASK) + 2;
++                    sideband = CTLSB_UPPER;
++                }
++            }
++            else {
++                bandwith = 20;
++                channel = chanspec & WL_CHANSPEC_CHAN_MASK;
++                sideband = CTLSB_NONE;
++            }
++            chspec->chanspec = chanspec;
++            chspec->channel = channel;
++            chspec->bw = bandwith;
++            if(CHSPEC_IS2G(chanspec)) chspec->band = 2;
++            else chspec->band = 5;
++            chspec->sb = sideband;
++
++            return ZCFG_SUCCESS;
++        }
++    }
++    else {
++        printf("%s: error open file\n",__FUNCTION__);
++    }
++    return ZCFG_INTERNAL_ERROR;
++}
++
++void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta)
++{
++    static char *filePath2 = "/tmp/.sta_rssi";
++    char buf[256];
++    char macAddr[18]={0};
++    int i = 0;
++    FILE *fp = NULL;
++
++    sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++    bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++
++    do {
++        sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
++        system(buf);
++        if ((fp = fopen(filePath2, "r"))) {
++            if (fgets(buf, sizeof(buf) - 1, fp) != NULL) {
++                if (buf[0] == 'w') {
++                    /* broadcom ==> wlctl: Not Found */
++                    break;
++                }
++                sta->rssi = atoi(buf);
++            }
++            fclose(fp);
++            unlink(filePath2);
++            if (sta->rssi==0) {
++                sleep(1);
++            }
++        }
++        i++;
++    } while ((sta->rssi == 0) && (i < 5));
++    return;
++}
++
+ int bsa_brcm_get_vendorid(void *priv, int index, void *cmd_info)
+ {
+ 	struct  bsa_peer_entity *bsa_peer = priv;
+@@ -392,7 +504,7 @@
+ {
+ 	struct bsa_peer_entity *bsa_peer = priv;
+ 	struct ieee80211_bsa_sta_stats *bsa_sta_stats = NULL;
+-	zy_sta_info_s sta_info;
++	zy_sta_info_t sta_info;
+ 	int retval = 0;
+ 	char buf[128] = {0};
+ 	int len = sizeof(buf)-1;
+@@ -535,7 +647,7 @@
+ 	struct bsa_peer_entity *bsa_peer = priv;
+ 	int retval = 0;
+ 	struct bsa_drv_connect_compl_event_info *connect_event;
+-	zy_sta_info_s sta_info;
++	zy_sta_info_t sta_info;
+ 	char buf[128] = {0};
+ 	int len = sizeof(buf)-1;
+ 	FILE *fp = NULL;
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-18 21:46:27.442945005 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-18 21:46:27.518944565 +0800
+@@ -1,9 +1,6 @@
+ #ifndef __BSA_DRIVER_BRCM_H__
+ #define __BSA_DRIVER_BRCM_H__
+ 
+-#include "bsa_includes.h"
+-#include "bsa_common_defs.h"
+-#include "bsa_peer_entity.h"
+ 
+ #define QTN_DRV_MLME_DISASSOC		2
+ #define QTN_DRV_MLME_DEAUTH		3
+@@ -240,4 +237,7 @@
+ 	struct ieee80211_bsa_sta_info ieee80211_bsa_sta_info_var[IEEE80211_AID_DEF];
+ }__attribute__((packed));
+ 
+-#endif
+\ No newline at end of file
++zcfgRet_t zyWlanGetCurrentChannelInfo(const char *ifname, struct ChSpec *chspec);
++void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta);
++
++#endif
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-04-18 21:46:27.486944749 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-04-18 21:46:27.518944565 +0800
+@@ -22,18 +22,6 @@
+ #include "bsa_wireless_copy.h"
+ 
+ #if 1 //Zyxel
+-/* BRCM SOCKET */
+-#include <sys/stat.h>
+-#include <sys/types.h>
+-#include <sys/socket.h>
+-#include <unistd.h>
+-#include <netinet/in.h>
+-#include <arpa/inet.h>
+-#include "proto/ethernet.h"
+-#include <proto/bcmevent.h>
+-#include "libzywlan.h"
+-#include "zylib.h"
+-
+ typedef struct bcm_dri_event {
+ 	struct ether_header eth;
+ 	bcmeth_hdr_t bcm_hdr;
+@@ -89,8 +77,7 @@
+ int zygetMaxRateSet(char *rate_set);
+ int zycheckWlBand(const char *ifname);
+ int zygetAntennaNum(char *mcs);
+-void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta);
+-int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type);
++int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_t *sta, char type);
+ #endif
+ 
+ 
+Index: bsa-1.0.1/bsa_peer/zylib.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/zylib.h	2017-04-18 21:46:27.378945389 +0800
++++ bsa-1.0.1/bsa_peer/zylib.h	2017-04-18 21:46:27.518944565 +0800
+@@ -1,7 +1,4 @@
+-//#include "wllist.h"
+-//#include "wllist.c"
+ #include "libzywlan.h"
+-//#include "brcm.c"
+ 
+ 
+ extern W_PRINT_FN brcm_print_fn;
+@@ -83,7 +80,7 @@
+ #define WL_STA_VHT_TXOP_PS	0x0200
+ #define WL_STA_HTC_VHT_CAP	0x0400
+ 
+-typedef struct zy_sta_info_t{
++typedef struct zy_sta_info_s{
+ 	char ifName[16];
+ 	char macaddr[18];
+ 	int standard;
+@@ -107,8 +104,7 @@
+     int rx_ss_info;
+     int max_phy_rate;
+     uint8_t channel;
+-}zy_sta_info_s;
+-
++}zy_sta_info_t;
+ 
+ 
+ /*typedef enum {
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-18 21:46:27.490944726 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-18 21:46:27.518944565 +0800
+@@ -42,6 +42,19 @@
+ *******************************************************************************
+ EH0*/
+ 
++#if 1 //Zyxel
++#include <endian.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <proto/ethernet.h>
++#include <proto/bcmevent.h>
++#include "zylib.h"
++#include "libzywlan.h"
++#endif
+ #include "version.h"
+ #include "bsa_peer_event.h"
+ #include "bsa_peer_entity.h"

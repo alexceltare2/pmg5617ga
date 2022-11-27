@@ -1,0 +1,65 @@
+Index: libzcfg_fe_dal-1.0/network/interfaceGrouping/zcfg_fe_dal_intfGrp.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/network/interfaceGrouping/zcfg_fe_dal_intfGrp.c	2017-09-06 15:45:02.229102560 +0800
++++ libzcfg_fe_dal-1.0/network/interfaceGrouping/zcfg_fe_dal_intfGrp.c	2017-09-06 15:52:41.953105139 +0800
+@@ -363,48 +363,29 @@
+ 
+ zcfgRet_t FindIPidx(int* IP_idx, objIndex_t newBrIid) {
+ 	zcfgRet_t ret = ZCFG_SUCCESS;
+-	json_object* bridgingBrObj = NULL;
+-	json_object* ipIntfObj = NULL;
+ 	json_object* v4AddrObj = NULL;
+-	objIndex_t bridgingBrIid;
+ 	objIndex_t v4AddrIid;
+ 	s_AllIpRangeInfo avlIpRange;
+-	char temp[30];
+-	char BridgePortStr[50];
+-	char BridgePortStr_2[30];
+ 	uint32_t IPAddress;
+ 	uint32_t SubnetMask;
+ 	int i = 0;
+ 	int ipIndex;
+ 	uint32_t ipS, ipE = 0;
+ 
+-	memset(BridgePortStr, 0, sizeof(BridgePortStr));
+-	memset(BridgePortStr_2, 0, sizeof(BridgePortStr_2));
+-	memset(temp, 0, sizeof(temp));
+-	strcat(BridgePortStr, "Bridging.Bridge.");
+-	strcat(BridgePortStr_2, ".Port.1");
+ 	avlIpRange.length = 0;
+-
+-	IID_INIT(bridgingBrIid);
+-	while(zcfgFeObjJsonGetNextWithoutUpdate(RDM_OID_BRIDGING_BR, &bridgingBrIid, &bridgingBrObj) == ZCFG_SUCCESS) {
+-		sprintf(temp, "%d", bridgingBrIid.idx[0]);
+-		strcat(BridgePortStr, temp);
+-		strcat(BridgePortStr, BridgePortStr_2);
+-		IID_INIT(v4AddrIid);
+-		while(zcfgFeObjJsonGetNextWithoutUpdate(RDM_OID_IP_IFACE_V4_ADDR, &v4AddrIid, &v4AddrObj) == ZCFG_SUCCESS) {
+-			IPAddress = Ipv4AddrtoInt((char*)json_object_get_string(json_object_object_get(v4AddrObj, "IPAddress")));
+-			SubnetMask = Ipv4AddrtoInt((char*)json_object_get_string(json_object_object_get(v4AddrObj, "SubnetMask")));
+-			avlIpRange.ipRangInfo[i].Start = IPAddress & SubnetMask;
+-			avlIpRange.ipRangInfo[i].End = (avlIpRange.ipRangInfo[i].Start) | (~SubnetMask);
+-			avlIpRange.length ++;
+-			if(avlIpRange.length > MAX_NUM_OF_IP_INFO) {
+-				printf("FindIPidx Error: avlIpRange,length is larger than %d\n", MAX_NUM_OF_IP_INFO);
+-				break;
+-			}
+-			i++;
+-			zcfgFeJsonObjFree(v4AddrObj);
++	IID_INIT(v4AddrIid);
++	while(zcfgFeObjJsonGetNextWithoutUpdate(RDM_OID_IP_IFACE_V4_ADDR, &v4AddrIid, &v4AddrObj) == ZCFG_SUCCESS) {
++		IPAddress = Ipv4AddrtoInt((char*)json_object_get_string(json_object_object_get(v4AddrObj, "IPAddress")));
++		SubnetMask = Ipv4AddrtoInt((char*)json_object_get_string(json_object_object_get(v4AddrObj, "SubnetMask")));
++		avlIpRange.ipRangInfo[i].Start = IPAddress & SubnetMask;
++		avlIpRange.ipRangInfo[i].End = (avlIpRange.ipRangInfo[i].Start) | (~SubnetMask);
++		avlIpRange.length ++;
++		if(avlIpRange.length > MAX_NUM_OF_IP_INFO) {
++			printf("FindIPidx Error: avlIpRange,length is larger than %d\n", MAX_NUM_OF_IP_INFO);
++			break;
+ 		}
+-		zcfgFeJsonObjFree(bridgingBrObj);
++		i++;
++		zcfgFeJsonObjFree(v4AddrObj);
+ 	}
+ 
+ 	/*make sure the ipS~ipE not be used in avlIpRange*/

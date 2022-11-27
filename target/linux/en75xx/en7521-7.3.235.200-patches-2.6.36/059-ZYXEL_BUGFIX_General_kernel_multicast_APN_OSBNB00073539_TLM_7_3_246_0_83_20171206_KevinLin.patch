@@ -1,0 +1,13 @@
+Index: linux-2.6.36/net/bridge/br_multicast.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_multicast.c	2018-01-30 14:49:46.700135861 +0800
++++ linux-2.6.36/net/bridge/br_multicast.c	2018-01-30 17:14:21.569331297 +0800
+@@ -227,7 +227,7 @@
+ 				continue;
+ 			}
+ 			bpg = f->ports;
+-			while(bpg){
++			while(bpg && (num<maxnum)){
+ 				if (has_expired(br, bpg)){
+ 					bpg = bpg->next;
+ 					continue;

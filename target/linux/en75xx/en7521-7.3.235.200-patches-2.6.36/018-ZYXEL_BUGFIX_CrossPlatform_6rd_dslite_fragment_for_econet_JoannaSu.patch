@@ -1,0 +1,150 @@
+Index: linux-2.6.36/net/ipv4/ip_output.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv4/ip_output.c	2017-04-26 03:23:04.879158458 +0800
++++ linux-2.6.36/net/ipv4/ip_output.c	2017-04-27 16:30:53.222765317 +0800
+@@ -700,6 +700,17 @@
+ 		return -EMSGSIZE;
+ 	}
+ 
++#if defined(ZYXEL)
++   /*
++    * Do not fragment the packets going to 4in6 tunnel:
++    * RFC2473 sec 7.2: fragmentation should happen in tunnel
++    */
++    if (strstr(dev->name, "ip6tnl"))
++    {
++        return output(skb);
++    }
++#endif
++
+ 	/*
+ 	 *	Setup starting values.
+ 	 */
+Index: linux-2.6.36/net/ipv6/ip6_output.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/ip6_output.c	2017-04-26 03:23:04.915158458 +0800
++++ linux-2.6.36/net/ipv6/ip6_output.c	2017-04-27 16:30:53.242775319 +0800
+@@ -56,7 +56,12 @@
+ #include <net/checksum.h>
+ #include <linux/mroute6.h>
+ 
++
++#if defined(ZYXEL)
++int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *));
++#else
+ static int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *));
++#endif
+ 
+ int __ip6_local_out(struct sk_buff *skb)
+ {
+@@ -610,7 +615,12 @@
+ 	return offset;
+ }
+ 
++
++#if defined(ZYXEL)
++int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
++#else
+ static int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
++#endif
+ {
+ 	struct sk_buff *frag;
+ 	struct rt6_info *rt = (struct rt6_info*)skb_dst(skb);
+@@ -883,6 +893,10 @@
+ 	return err;
+ }
+ 
++#if defined(ZYXEL)
++EXPORT_SYMBOL_GPL(ip6_fragment);
++#endif
++
+ static inline int ip6_rt_check(struct rt6key *rt_key,
+ 			       struct in6_addr *fl_addr,
+ 			       struct in6_addr *addr_cache)
+Index: linux-2.6.36/net/ipv6/ip6_tunnel.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/ip6_tunnel.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/net/ipv6/ip6_tunnel.c	2017-04-27 16:30:53.254781317 +0800
+@@ -77,6 +77,9 @@
+ 
+ static void ip6_tnl_dev_init(struct net_device *dev);
+ static void ip6_tnl_dev_setup(struct net_device *dev);
++#if defined(ZYXEL)
++extern int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *));
++#endif
+ 
+ static int ip6_tnl_net_id __read_mostly;
+ struct ip6_tnl_net {
+@@ -857,6 +860,9 @@
+ 	u8 proto;
+ 	int err = -1;
+ 	int pkt_len;
++#if defined(ZYXEL)
++	u8 needFrag = 0;
++#endif
+ 
+ 	if ((dst = ip6_tnl_dst_check(t)) != NULL)
+ 		dst_hold(dst);
+@@ -888,8 +894,12 @@
+ 		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), mtu);
+ 	if (skb->len > mtu) {
+ 		*pmtu = mtu;
++#if defined(ZYXEL)
++		needFrag = 1;
++#else
+ 		err = -EMSGSIZE;
+ 		goto tx_err_dst_release;
++#endif
+ 	}
+ 
+ 	/*
+@@ -931,7 +941,19 @@
+ 	ipv6_addr_copy(&ipv6h->daddr, &fl->fl6_dst);
+ 	nf_reset(skb);
+ 	pkt_len = skb->len;
++
++#if defined(ZYXEL)
++	if (needFrag) {
++		skb->local_df = 1;
++		ip6_fragment(skb, ip6_local_out);
++	}
++	else {
+ 	err = ip6_local_out(skb);
++	}
++#else
++	err = ip6_local_out(skb);
++#endif
++
+ 
+ 	if (net_xmit_eval(err) == 0) {
+ 		stats->tx_bytes += pkt_len;
+Index: linux-2.6.36/net/ipv6/sit.c
+===================================================================
+--- linux-2.6.36.orig/net/ipv6/sit.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/net/ipv6/sit.c	2017-04-27 16:30:53.266787318 +0800
+@@ -789,7 +789,25 @@
+ 	iph 			=	ip_hdr(skb);
+ 	iph->version		=	4;
+ 	iph->ihl		=	sizeof(struct iphdr)>>2;
++#if defined(ZYXEL)
++	/*
++	 *	cd-router - ipv6_6rd_13: DF flag should not be set
++	 *	RFC 3056 sec 4: DF flag should not be set
++	 *	RFC 4213 sec 3.2.1: DF flag MUST NOT be set for static MTU cases.
++	 *	RFC 4213 sec 3.2.2: For dynamic MTU cases, the algorithm should be:
++	 *	if ( (v4MTU-20) < 1280 ) {
++	 *	    if ( v6Pkt > 1280 ) send ICMPv6 "TooBig" with MTU=1280;
++	 *	    else encapsulate to v4 packet and DF flag MUST NOT be set
++	 *	}
++	 *	else {
++	 *	    if ( v6Pkt > (v4MTU-20) ) send ICMPv6 "TooBig" with MTU=(v4MTU-20);
++	 *	    else encapsulate to v4 packet and DF flag MUST be set
++	 *	}
++	 */
++	iph->frag_off		=	0;
++#else
+ 	iph->frag_off		=	df;
++#endif
+ 	iph->protocol		=	IPPROTO_IPV6;
+ 	iph->tos		=	INET_ECN_encapsulate(tos, ipv6_get_dsfield(iph6));
+ 	iph->daddr		=	rt->rt_dst;

@@ -1,0 +1,60 @@
+Index: libzcfg_fe_tr98-1.0/mgmtSrv_parameter.h
+===================================================================
+--- libzcfg_fe_tr98-1.0.orig/mgmtSrv_parameter.h	2018-07-26 00:10:10.992033498 -0700
++++ libzcfg_fe_tr98-1.0/mgmtSrv_parameter.h	2018-07-26 00:22:42.820047920 -0700
+@@ -15,7 +15,9 @@
+ 	{ "DownloadProgressURL", PARAMETER_ATTR_READONLY, 257, json_type_string},
+ 	{ "DefaultActiveNotificationThrottle", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "UDPConnectionRequestAddress", PARAMETER_ATTR_READONLY, 257, json_type_string},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "UDPConnectionRequestAddressNotificationLimit", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
++#endif
+ 	{ "STUNEnable", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
+ 	{ "STUNServerAddress", PARAMETER_ATTR_WRITE, 257, json_type_string},
+ 	{ "STUNServerPort", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+Index: libzcfg_fe_tr98-1.0/wanDev_parameter.h
+===================================================================
+--- libzcfg_fe_tr98-1.0.orig/wanDev_parameter.h	2018-07-26 00:10:11.052033499 -0700
++++ libzcfg_fe_tr98-1.0/wanDev_parameter.h	2018-07-26 00:25:57.456051654 -0700
+@@ -503,7 +503,9 @@
+ 	{ "Enable", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
+ 	{ "Order", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "Tag", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "Value", PARAMETER_ATTR_READONLY, 256, json_type_uint32},
++#endif
+ 	{ NULL, 0, 0, 0}
+ };
+ 
+@@ -951,25 +953,31 @@
+ };
+ 
+ tr98Parameter_t para_WANWwanIntfStatsConf[] = {
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "ServiceProvider", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
++#endif
+ 	{ "DeviceStatus", PARAMETER_ATTR_READONLY, 32, json_type_string},
+ 	{ "SignalStrength", PARAMETER_ATTR_WRITE, 32, json_type_string},
+ 	{ "SignalQuality", PARAMETER_ATTR_WRITE, 32, json_type_string},
+ 	{ "DeviceManufacturer", PARAMETER_ATTR_WRITE, 32, json_type_string},
+ 	{ "DeviceModelName", PARAMETER_ATTR_WRITE, 32, json_type_string},
+ 	{ "DeviceFirmwareVersion", PARAMETER_ATTR_WRITE, 32, json_type_string},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "DeviceIMEI", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
+ 	{ "SIMCardIMSI", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "DeviceESN", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "ValidErrorPINTimes", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "ValidErrorPUKTimes", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
++#endif
+ 	{ "BytesSent", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "BytesReceived", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "CellsSent", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "CellsReceived", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
+ 	{ "ErrorsSent", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
+ 	{ "ErrorsReceived", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "DongleMode", PARAMETER_ATTR_WRITE, 0, json_type_uint32},
++#endif
+ 	{ NULL, 0, 0, 0}
+ };
+ 

@@ -1,0 +1,14 @@
+Index: libzcfg_fe_tr98-1.0/wanDev_parameter.h
+===================================================================
+--- libzcfg_fe_tr98-1.0.orig/wanDev_parameter.h	2017-08-17 13:51:54.433296743 +0800
++++ libzcfg_fe_tr98-1.0/wanDev_parameter.h	2017-08-17 13:53:59.381294076 +0800
+@@ -1,7 +1,9 @@
+ tr98Parameter_t para_WanDev[] = {
+ 	{ "WANConnectionNumberOfEntries", PARAMETER_ATTR_READONLY, 0, json_type_uint32},
++#ifndef CONFIG_XPON_SUPPORT
+ 	{ "X_ZYXEL_3GEnable", PARAMETER_ATTR_WRITE, 0, json_type_boolean},
+ 	{ "X_ZYXEL_PinNumber", PARAMETER_ATTR_WRITE, 33, json_type_string},
++#endif
+ 	{ NULL, 0, 0, 0}
+ };
+ 

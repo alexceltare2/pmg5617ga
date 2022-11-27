@@ -1,0 +1,20 @@
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2017-01-24 10:34:18.017624721 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2017-01-24 10:34:18.053624722 +0800
+@@ -706,9 +706,15 @@
+ 
+ 	if (current_wifi_mode == qcsapi_access_point) {
+ 		retval = qcsapi_wps_get_configured_state( vap, &wps_enable_str[ 0 ], sizeof( wps_state_str ) );
++#ifdef ZYXEL_PATCH
++		if (retval < 0) {
++			goto wps_led_end;
++		}
++#else
+ 		if (retval < 0 || (strcasecmp(wps_enable_str, "disabled") == 0)) {
+ 			goto wps_led_end;
+ 		}
++#endif
+ 	}
+ 
+ 	retval = qcsapi_wps_get_state( vap, &wps_state_str[ 0 ], sizeof( wps_state_str ) );

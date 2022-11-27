@@ -1,0 +1,192 @@
+Index: qsteer-v0.10.3/csm/Makefile
+===================================================================
+--- qsteer-v0.10.3.orig/csm/Makefile	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/Makefile	2017-03-08 15:28:13.934601049 +0800
+@@ -1,13 +1,17 @@
+-CC = $(CROSS)gcc
++#CC = $(CROSS)gcc
+ PWD = $(shell pwd)
+ TARGET ?= $(PWD)/target
+ 
++CFLAGS = $(TARGET_CFLAGS) -O -Wno-unused-variable -Wno-unused-parameter 
++
+ CFLAGS += -fPIC -pthread
+ CFLAGS += -g
+ CFLAGS += -Werror
+ CFLAGS += -I./include
+ LDFLAGS += -L./lib
+ 
++CFLAGS += -D_GNU_SOURCE
++
+ ifneq ($(STAGING_DIR),)
+ 	LDFLAGS += -L$(STAGING_DIR)/lib -L$(STAGING_DIR)/usr/lib
+ 	CFLAGS += -I$(STAGING_DIR)/include -I$(STAGING_DIR)/usr/include -I$(STAGING_DIR)/include/libnl3
+@@ -31,7 +35,8 @@
+ LIBCSM_OBJS = $(LIBCSM_SRCS:.c=.o)
+ 
+ LIBCFG = $(LIB_DIR)/libcfg_ext.so
+-LIBCFG_SRCS = cfg_ext_qtn.c
++#LIBCFG_SRCS = cfg_ext_qtn.c
++LIBCFG_SRCS = cfg_ext_zyxel.c
+ LIBCFG_OBJS = $(LIBCFG_SRCS:.c=.o)
+ 
+ LIBCOMM = $(LIB_DIR)/libqsteer_comm_ext.so
+@@ -67,21 +72,21 @@
+ all: $(LIB_DIR) $(LIBCSM) $(LIBCFG) $(LIBCOMM) $(LOGIC_DIR) $(LOGIC_SAMPLE1) $(DRIVER_DIR) $(DRIVER_QTN_NETLINK) $(COMM_DIR) $(COMM_INACTIVE) $(CSMD) rpecat_compile
+ 
+ install: all rpecat_install
+-	install -d $(TARGET)/usr/sbin
+-	install -d $(TARGET)/etc
+-	install -d $(TARGET)/usr/lib/
+-	install -m0755 $(CSMD) $(TARGET)/usr/sbin/
+-	install -m0644 $(CSMD).json $(TARGET)/etc
+-	cp -rf $(LIB_DIR)/* $(TARGET)/usr/lib/
+-	cp -rf $(DRIVER_DIR) $(TARGET)/usr/lib/
+-	cp -rf $(LOGIC_DIR) $(TARGET)/usr/lib/
+-	cp -rf $(COMM_DIR) $(TARGET)/usr/lib/
++	install -d $(QSTEER_INSTALL_DIR)/usr/sbin
++	install -d $(QSTEER_INSTALL_DIR)/etc
++	install -d $(QSTEER_INSTALL_DIR)/usr/lib/
++	install -m0755 $(CSMD) $(QSTEER_INSTALL_DIR)/usr/sbin/
++	install -m0644 $(CSMD).json $(QSTEER_INSTALL_DIR)/etc	
++	cp -rf $(LIB_DIR)/* $(QSTEER_INSTALL_DIR)/usr/lib/
++	cp -rf $(DRIVER_DIR) $(QSTEER_INSTALL_DIR)/usr/lib/
++	cp -rf $(LOGIC_DIR) $(QSTEER_INSTALL_DIR)/usr/lib/
++	cp -rf $(COMM_DIR) $(QSTEER_INSTALL_DIR)/usr/lib/
+ 
+ install_staging: $(LIBCOMM) $(LIBCFG)
+-	cp cfg_ext.h $(STAGING_DIR)/include
+-	cp qsteer_comm_ext.h $(STAGING_DIR)/include
+-	cp $(LIBCOMM) $(STAGING_DIR)/usr/lib
+-	cp $(LIBCFG) $(STAGING_DIR)/usr/lib
++	cp cfg_ext.h $(QSTEER_INSTALL_DIR)/include
++	cp qsteer_comm_ext.h $(QSTEER_INSTALL_DIR)/include
++	cp $(LIBCOMM) $(QSTEER_INSTALL_DIR)/usr/lib
++	cp $(LIBCFG) $(QSTEER_INSTALL_DIR)/usr/lib
+ 
+ $(LIB_DIR):
+ 	-mkdir $@
+Index: qsteer-v0.10.3/Makefile
+===================================================================
+--- qsteer-v0.10.3.orig/Makefile	2017-03-03 15:59:44.000000000 +0800
++++ qsteer-v0.10.3/Makefile	2017-03-08 15:29:04.654599256 +0800
+@@ -1,3 +1,5 @@
++export QSTEER_INSTALL_DIR
++
+ all: csm_install
+ 
+ csm_install:
+@@ -6,5 +8,6 @@
+ clean: csm_clean
+ 
+ csm_clean:
++	rm -rf $(QSTEER_INSTALL_DIR)
+ 	$(MAKE) -C csm clean
+ 
+Index: qsteer-v0.10.3/csm/rpecat/Makefile
+===================================================================
+--- qsteer-v0.10.3.orig/csm/rpecat/Makefile	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/rpecat/Makefile	2017-03-08 15:28:13.934601049 +0800
+@@ -1,7 +1,9 @@
+-CC = $(CROSS)gcc
++#CC = $(CROSS)gcc
+ PWD = $(shell pwd)
+ TARGET ?= $(PWD)/target
+ 
++CFLAGS = $(TARGET_CFLAGS) -O -Wno-unused-variable -Wno-unused-parameter 
++
+ CFLAGS += -I$(PWD)/../include
+ CFLAGS += -fpic
+ CFLAGS += -g
+@@ -30,9 +32,8 @@
+ 	$(CC) $(LDFLAGS) -o $@ $^
+ 
+ install: all
+-	install -d $(TARGET)/usr/sbin
+-	install -m0755 $(RPECAT) $(TARGET)/usr/sbin/
+-	install -m0755 $(RPECAT_CLI) $(TARGET)/usr/sbin/
++	install -m0755 $(RPECAT) $(QSTEER_INSTALL_DIR)/bin
++	install -m0755 $(RPECAT_CLI) $(QSTEER_INSTALL_DIR)/bin
+ 
+ clean:
+ 	-rm -f *.o
+Index: qsteer-v0.10.3/csm/cfg_ext_zyxel.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ qsteer-v0.10.3/csm/cfg_ext_zyxel.c	2017-03-08 15:28:13.934601049 +0800
+@@ -0,0 +1,55 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <json/json.h>
++#include "cfg_ext.h"
++
++#define ZYSONIQ_CMD "/bin/zySONiQ"
++
++int qsteer_get_cfg(const char *path)
++{
++	char cmd[512];
++	int ret;
++
++	if (!path)
++		return -1;
++
++	ret = snprintf(cmd, sizeof(cmd), "%s get %s", ZYSONIQ_CMD, path);
++	if (ret >= sizeof(cmd))
++		return -1;
++
++	ret = system(cmd);
++	if (ret != 0)
++		return -1;
++
++	return 0;
++}
++
++int qsteer_set_cfg(const char *path)
++{
++	int ret;
++	
++	printf("%s: Enter, path %s\n", __FUNCTION__, path);
++	return 0;
++}
++
++void qsteer_report_update_feedback(const char *path)
++{
++	char cmd[512];
++	int ret;
++
++	if (!path)
++		return;
++
++	ret = snprintf(cmd, sizeof(cmd), "cat %s", path);
++	if (ret >= sizeof(cmd))
++		return;
++
++	system(cmd);
++}
++
++int qsteer_apply_local_cfg(void)
++{
++	return 0;
++}
+Index: qsteer-v0.10.3/csm/csmd.json
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csmd.json	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/csmd.json	2017-03-08 15:28:13.934601049 +0800
+@@ -27,7 +27,14 @@
+ 	],
+ 	"communications": [
+ 		{
+-			"name":"comm.qtn.inactive",
++			"name":"comm.qtn",
++			"parameters":
++			{
++				"interface":"br0",
++				"enable_role_detect":0,
++				"preset_role":"master",
++				"log_level":"info",
++			}
+ 		}
+ 	],
+ 	"miscs": [

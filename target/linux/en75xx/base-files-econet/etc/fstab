@@ -1,0 +1,13 @@
+# fstab file - used to mount file systems
+# /proc /sys /dev/pts /tmp was mount on preinit
+#proc            /proc   proc    defaults        0       0
+# tmpfs           /var    tmpfs   size=420k       0       0
+tmpfs           /mnt    tmpfs   size=16k        0       0
+#sysfs           /sys    sysfs   defaults        0       0
+
+#ramfs           /tmp    ramfs   defaults        0       0
+#devpts          /dev/pts devpts defaults        0       0
+
+#mtd:data        /data   jffs2   ,               0       0
+/dev/mtdblock9   /data   yaffs2  tags-ecc-off    0       0
+

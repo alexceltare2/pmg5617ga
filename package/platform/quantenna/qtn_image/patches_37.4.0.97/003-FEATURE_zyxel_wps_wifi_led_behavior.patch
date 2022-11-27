@@ -1,0 +1,113 @@
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h	2017-01-13 16:14:19.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.h	2017-01-24 10:32:03.349622071 +0800
+@@ -85,12 +85,21 @@
+ #define  MONITOR_WIFI_WLAN_BLINK_INTERVAL_USEC	500000
+ #define  MONITOR_WIFI_WLAN_HANDSHAKING_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_WLAN_HANDSHAKING_BLINK_INTERVAL_USEC	250000
++#ifdef ZYXEL_PATCH
++#define  MONITOR_WIFI_WPS_BLINK_INTERVAL_SEC    0
++#define  MONITOR_WIFI_WPS_BLINK_INTERVAL_USEC   150000
++#define  MONITOR_WIFI_MODE_BLINK_INTERVAL_SEC   0
++#define  MONITOR_WIFI_MODE_BLINK_INTERVAL_USEC  150000
++#define  MONITOR_WIFI_QUAL_BLINK_INTERVAL_SEC   0
++#define  MONITOR_WIFI_QUAL_BLINK_INTERVAL_USEC  150000
++#else
+ #define  MONITOR_WIFI_WPS_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_WPS_BLINK_INTERVAL_USEC	500000
+ #define  MONITOR_WIFI_MODE_BLINK_INTERVAL_SEC	0
+ #define  MONITOR_WIFI_MODE_BLINK_INTERVAL_USEC	500000
+ #define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_SEC	0
+ #define	 MONITOR_WIFI_QUAL_BLINK_INTERVAL_USEC	500000
++#endif
+ 
+ #ifdef TOPAZ_AMBER_IP_APP
+ #define	 MONITOR_WIFI_ACTIVITY_BLINK_INTERVAL_SEC	0
+@@ -132,7 +141,11 @@
+ #define  MONITOR_WPS_LED_STATE_TIMEOUT		MONITOR_WIFI_LED_OFF
+ #define  MONITOR_WPS_LED_STATE_OVERLAP		MONITOR_WIFI_LED_OFF
+ #define  MONITOR_WPS_LED_STATE_UNKNOWN		MONITOR_WIFI_LED_OFF
++#ifdef ZYXEL_PATCH
++#define  MONITOR_WPS_LED_STATE_SUCCESS      MONITOR_WIFI_LED_OFF
++#else
+ #define  MONITOR_WPS_LED_STATE_SUCCESS		MONITOR_WIFI_LED_ON
++#endif
+ #define  MONITOR_WPS_LED_STATE_M2_SEND		MONITOR_WIFI_LED_BLINK
+ #define  MONITOR_WPS_LED_STATE_M8_SEND		MONITOR_WIFI_LED_BLINK
+ #define  MONITOR_WPS_LED_STATE_STA_CANCEL	MONITOR_WIFI_LED_OFF
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2017-01-13 16:14:19.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi-1.0.1/monitor_wifi.c	2017-01-24 10:32:03.349622071 +0800
+@@ -988,10 +988,51 @@
+ #if !defined(CUSTOMER_SPEC_RGMII) && !defined(TOPAZ_AMBER_IP_APP)
+ 	monitor_wifi_update_mode(wifi_mode, &slow_interval);
+ #endif
+-
+-	monitor_wifi_update_wlan(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
+-	monitor_wifi_update_wps(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
+-	monitor_wifi_update_quality(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &current_link_quality, &fast_interval);
++	
++#ifdef ZYXEL_PATCH
++	char wps_state_str[LOCAL_WPS_STATE_LEN];
++	int wps_state_value = (int)MONITOR_WIFI_WPS_UNKNOWN;
++	int monitor_wps = 0, monitor_wlan = 0;
++	
++	if(wifi_mode == qcsapi_access_point){
++		retval = qcsapi_wps_get_state( MONITOR_WIFI_DEFAULT_VAP, (char*)wps_state_str, sizeof( wps_state_str ) );
++		if (retval >= 0) {
++			wps_state_value = atoi(wps_state_str);
++			if(wps_state_value == MONITOR_WIFI_WPS_IN_PROGRESS){
++				monitor_wps = 1;
++			}
++			else{
++				monitor_wlan = 1;
++			}
++		}
++		else{
++			monitor_wlan = 1;
++		}
++		
++		if(monitor_wlan){
++			monitor_wifi_update_wlan(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		}
++		else{
++			monitor_wifi_update_led(MONITOR_WIFI_WLAN_INDEX, MONITOR_WIFI_LED_OFF, &slow_interval);
++		}
++		
++		if(monitor_wps){
++			monitor_wifi_update_wps(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		}
++		else {
++			monitor_wifi_update_led(MONITOR_WIFI_WPS_INDEX, MONITOR_WIFI_LED_OFF, &slow_interval);
++		}
++		
++		monitor_wifi_update_quality(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &current_link_quality, &fast_interval);
++	}
++	else {
++#endif
++		monitor_wifi_update_wlan(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		monitor_wifi_update_wps(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
++		monitor_wifi_update_quality(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &current_link_quality, &fast_interval);
++#ifdef ZYXEL_PATCH
++	}
++#endif
+ 
+ #ifdef TOPAZ_AMBER_IP_APP
+ 	monitor_wifi_update_activity(MONITOR_WIFI_DEFAULT_VAP, wifi_mode, &fast_interval);
+Index: qtn_image/source/buildroot/package/qcsapi/qcsapi.mk
+===================================================================
+--- qtn_image.orig/source/buildroot/package/qcsapi/qcsapi.mk	2017-01-13 16:14:19.000000000 +0800
++++ qtn_image/source/buildroot/package/qcsapi/qcsapi.mk	2017-01-24 10:32:03.349622071 +0800
+@@ -79,6 +79,10 @@
+ TARGET_CFLAGS += -g
+ endif
+ 
++ifeq ($(BR2_ZYXEL_PATCH), y)
++TARGET_CFLAGS += -DZYXEL_PATCH
++endif
++
+ qcsapi: zlib
+ 	$(MAKE) MAKEFLAGS="-j1" -C $(QCSAPI_BUILD_DIR) EXTRA_PROGS="$(QCSAPI_EXTRA_PROGS)" PREFIX="$(TARGET_DIR)" \
+ 		CC=$(TARGET_CC) STRIP=$(STRIP) XCFLAGS="$(TARGET_CFLAGS) $(EXTRA_WARNINGS) $(EXTRA_DEFINES)	\

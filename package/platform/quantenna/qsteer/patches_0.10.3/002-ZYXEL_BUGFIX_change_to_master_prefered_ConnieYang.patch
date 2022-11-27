@@ -1,0 +1,14 @@
+Index: qsteer-v0.10.3/csm/csmd.json
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csmd.json	2017-03-10 09:37:42.105693281 +0800
++++ qsteer-v0.10.3/csm/csmd.json	2017-03-10 09:40:33.173687233 +0800
+@@ -31,8 +31,7 @@
+ 			"parameters":
+ 			{
+ 				"interface":"br0",
+-				"enable_role_detect":0,
+-				"preset_role":"master",
++				"master_preferred":1,
+ 				"log_level":"info",
+ 			}
+ 		}

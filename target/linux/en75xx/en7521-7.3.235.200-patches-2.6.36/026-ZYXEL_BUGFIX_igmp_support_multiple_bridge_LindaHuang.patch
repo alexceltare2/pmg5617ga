@@ -1,0 +1,223 @@
+Index: linux-2.6.36/net/bridge/br_multicast.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_multicast.c	2017-04-26 03:23:04.000000000 +0800
++++ linux-2.6.36/net/bridge/br_multicast.c	2017-04-27 16:42:59.231679885 +0800
+@@ -490,11 +490,18 @@
+ 
+ 	struct net_bridge_port_group *pg;
+ 		struct hlist_node *p, *n;
+-	
++
++#if 1//ZYXEL workaround	
++		//spin_lock(&br->multicast_lock);
++		hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
++			br_multicast_del_pg(br, pg);
++		//spin_unlock(&br->multicast_lock);
++#else
+ 		spin_lock(&br->multicast_lock);
+ 		hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
+ 			br_multicast_del_pg(br, pg);
+ 		spin_unlock(&br->multicast_lock);
++#endif
+ #if 0
+ 	rcu_read_lock();
+ 	spin_lock(&br->multicast_lock);
+@@ -2862,6 +2869,10 @@
+ #define MUL_PROTO_IGMP 1
+ #define MUL_PROTO_MLD 2
+ 
++#if 1//ZYXEL
++static struct list_head br_list;
++static spinlock_t	 br_lock;
++#endif
+ static struct list_head hwnat_igmp_entry;
+ static unsigned int hwnat_igmp_flag = 1;
+ static unsigned int hwnat_age_time = 3000;
+@@ -3199,6 +3210,30 @@
+ 	
+ 	return mask;
+ }
++#if 1//ZYXEL
++unsigned long igmp_hwnat_port_mask_zyxel(struct net_bridge *br,IGMP_HWNATEntry_t* entry)
++{	
++	struct net_bridge *br_p = br;
++	struct multicast_br_list *b_entry = NULL;
++	struct multicast_br_list *ptr = NULL;
++	int mask = 0;
++	
++	if(br_p)
++		return igmp_hwnat_port_mask(br_p, entry);
++	else
++	{
++		spin_lock(&br_lock);
++		list_for_each_entry_safe(b_entry, ptr, &br_list, list)
++	    {
++			mask = igmp_hwnat_port_mask(b_entry->br, entry);			
++			if(mask != 0)
++				break;
++	    }
++		spin_unlock(&br_lock);
++	}
++	return mask;
++}
++#endif
+ 
+ /**************************************************
+ Function: Delete a entry maintained by SW
+@@ -3560,6 +3595,7 @@
+ 	unsigned long masktemp = mask;
+ 	entry->wifinum = 0;
+ 	IGMP_HWNAT_DEBUG("state=%d,mask=%d",state,mask);
++	
+ 	switch(state)
+ 	{
+ 		//only state i and state iii need to know how much wifi interfaces
+@@ -3579,10 +3615,10 @@
+ 		default:
+ 			break;	
+ 	}
+-
++#if 0//ZYXEL workaround
+ 	if(hwnat_set_rule_according_to_state_hook)
+ 		hwnat_set_rule_according_to_state_hook(entry->index,state,mask);
+-	
++#endif	
+ 	entry->mask = mask;
+ 
+ 	return 0;
+@@ -3625,7 +3661,11 @@
+ 			continue;
+ 		}
+ 
++#if 1 //ZYXEL
++		mask = igmp_hwnat_port_mask_zyxel(br,entry);
++#else
+ 		mask = igmp_hwnat_port_mask(br,entry);
++#endif
+ 		old_mask = entry->mask;
+ 		if (mask != old_mask)
+ 		{
+@@ -3823,9 +3863,12 @@
+ 	
+ 	spin_unlock(&hwnat_lock);
+ 
++#if 1 //ZYXEL
++	igmp_hwnat_update_all(NULL);
++#else
+ 	if (hwnat_br)
+ 		igmp_hwnat_update_all(hwnat_br);
+-
++#endif
+ 	return 0;
+ }
+ 
+@@ -4244,8 +4287,50 @@
+ }
+ #endif
+ 
++#if 1 //ZYXEL
++#ifdef TCSUPPORT_MULTICAST_SPEED
++void addbr_to_bridge_list(struct net_bridge *br)
++{
++	struct multicast_br_list *b;
++	b = kzalloc(sizeof(*b), GFP_KERNEL);
++	if (b == NULL)
++		return ERR_PTR(-ENOMEM);
++
++	b->br = br;
++	strncpy(b->name, br->dev->name, IFNAMSIZ);
++	spin_lock(&br_lock);
++	list_add(&b->list, &br_list);
++	spin_unlock(&br_lock);
++}
++
++void delbr_to_bridge_list(struct net_bridge *br)
++{
++	struct multicast_br_list *entry = NULL;
++	struct multicast_br_list *ptr = NULL;
++
++	spin_lock(&br_lock);
++	list_for_each_entry_safe(entry, ptr, &br_list, list)
++    {
++        if(strcmp(entry->name, br->dev->name)== 0)
++        {
++            list_del(&entry->list);
++			kfree(entry);
++            entry = NULL;
++        }
++    }
++	spin_unlock(&br_lock);
++}
++#endif
++#endif
++
+ void igmp_hwnat_init(struct net_bridge *br)
+ {
++#if 1 //ZYXEL
++struct file* fp = NULL;		
++fp = filp_open("/proc/tc3162/igmp_hwnat", O_RDWR, 0);	
++if (IS_ERR(fp))
++{
++#endif
+ 	struct proc_dir_entry *hwnat_proc = NULL;
+ 	INIT_LIST_HEAD(&hwnat_igmp_entry);
+ 	spin_lock_init(&hwnat_lock);
+@@ -4268,7 +4353,21 @@
+ 	hwnat_proc = create_proc_entry("tc3162/igmp_hwnat", 0, NULL);
+ 	hwnat_proc->read_proc = igmp_hwnat_read_proc;
+ 	hwnat_proc->write_proc = igmp_hwnat_write_proc;
++#if 1 //ZYXEL
++	INIT_LIST_HEAD(&br_list);
++}
++else
++{		
++	filp_close(fp,NULL);
++}
++#endif
++#if 1 //ZYXEL	
++#ifdef TCSUPPORT_MULTICAST_SPEED
++	addbr_to_bridge_list(br);
++#endif
++#else
+ 	hwnat_br = br;
++#endif
+ 	return;
+ }
+ 
+Index: linux-2.6.36/net/bridge/br_if.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_if.c	2017-04-26 03:23:04.000000000 +0800
++++ linux-2.6.36/net/bridge/br_if.c	2017-04-27 16:41:09.630815321 +0800
+@@ -173,7 +173,11 @@
+ 	list_for_each_entry_safe(p, n, &br->port_list, list) {
+ 		del_nbp(p);
+ 	}
+-
++#if 1//ZYXEL
++#ifdef TCSUPPORT_MULTICAST_SPEED
++	delbr_to_bridge_list(br);
++#endif
++#endif
+ 	del_timer_sync(&br->gc_timer);
+ 
+ 	br_sysfs_delbr(br->dev);
+Index: linux-2.6.36/net/bridge/br_private.h
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_private.h	2017-04-26 03:23:04.000000000 +0800
++++ linux-2.6.36/net/bridge/br_private.h	2017-04-27 16:41:09.634817321 +0800
+@@ -312,6 +312,15 @@
+     unsigned long    port_mask;
+ }multicast_flood_hwentry_t;
+ 
++#if 1//ZYXEL
++struct multicast_br_list
++{       
++    struct list_head 	list;
++    struct net_bridge	*br;
++	char				name[IFNAMSIZ];
++};
++#endif
++
+ #define BR_INPUT_SKB_CB(__skb)	((struct br_input_skb_cb *)(__skb)->cb)
+ 
+ #ifdef CONFIG_BRIDGE_IGMP_SNOOPING

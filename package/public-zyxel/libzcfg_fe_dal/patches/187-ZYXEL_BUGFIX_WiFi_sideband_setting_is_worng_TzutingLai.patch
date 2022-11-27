@@ -1,0 +1,13 @@
+Index: libzcfg_fe_dal-1.0/network/wireless/zcfg_fe_dal_wifi_general.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/network/wireless/zcfg_fe_dal_wifi_general.c	2018-07-24 15:28:56.760742317 +0800
++++ libzcfg_fe_dal-1.0/network/wireless/zcfg_fe_dal_wifi_general.c	2018-07-24 15:31:20.280745391 +0800
+@@ -546,7 +546,7 @@
+ 		json_object_object_add(wifiRadioObj, "OperatingChannelBandwidth", json_object_new_string("80MHz"));
+ 	if (bandwidth == 40)
+ 	{
+-		if(extcha == 1)
++		if(extcha == 2)
+ 			json_object_object_add(wifiRadioObj, "ExtensionChannel", json_object_new_string("BelowControlChannel"));
+ 		else
+ 			json_object_object_add(wifiRadioObj, "ExtensionChannel", json_object_new_string("AboveControlChannel"));

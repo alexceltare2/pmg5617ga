@@ -1,0 +1,12 @@
+Index: qsteer-v0.10.3/csm/csmd.json
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csmd.json	2017-04-21 11:03:00.590414462 +0800
++++ qsteer-v0.10.3/csm/csmd.json	2017-04-21 11:12:08.666154488 +0800
+@@ -32,6 +32,7 @@
+ 			{
+ 				"interface":"br0",
+ 				"master_preferred":1,
++				"enable_cfg_distribute":0,
+ 				"log_level":"info",
+ 			}
+ 		}

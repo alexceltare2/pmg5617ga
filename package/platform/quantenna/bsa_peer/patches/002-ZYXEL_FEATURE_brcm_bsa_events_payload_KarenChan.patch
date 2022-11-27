@@ -1,0 +1,496 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-05 15:49:59.040349383 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-05 15:51:50.489668316 +0800
+@@ -336,21 +336,28 @@
+ 	return;
+ }
+ 
++void zyChangeEndian(bcm_event_t *Oripkt){
++    Oripkt->event.version=ntohs(Oripkt->event.version);
++    Oripkt->event.flags=ntohs(Oripkt->event.flags);
++    Oripkt->event.event_type=ntohl(Oripkt->event.event_type);
++    Oripkt->event.status=ntohl(Oripkt->event.status);
++    Oripkt->event.reason=ntohl(Oripkt->event.reason);
++    Oripkt->event.auth_type=ntohl(Oripkt->event.auth_type);
++    Oripkt->event.datalen=ntohl(Oripkt->event.datalen);
++}
++
+ void bsa_peer_netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+     struct bsa_peer_entity *bsa_peer = eloop_ctx;
+-    unsigned int evt_type;
+     char pkt[4096] = {0};
+     int sock_len = sizeof(struct sockaddr_in);
+     int bytes;
+     struct sockaddr_in fromdriv;
+     bcm_event_t *dpkt;
+-
+     bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
+     dpkt = (bcm_event_t *)pkt;
+-    evt_type = ntohl(dpkt->event.event_type);
+-
+-    zybsa_peer_drv_events_handler(dpkt, evt_type, bsa_peer);
++    zyChangeEndian(dpkt);
++    zybsa_peer_drv_events_handler(dpkt, dpkt->event.event_type, bsa_peer);
+     /*struct bsa_peer_entity *bsa_peer = eloop_ctx;
+ 	struct bsa_netlink_data *netlink = bsa_peer->netlink;
+ 	char *buf;
+@@ -1194,65 +1201,49 @@
+ }
+ 
+ void zybsa_peer_drv_events_handler(bcm_event_t *drv_msg, int drv_event, struct bsa_peer_entity *bsa_peer){
++	char macAddr[18];
++	unsigned char sta_mac[18];
++	uint8 bssid[ETHER_ADDR_LEN];
++
+     /* Send brcm eventsfrom bsa_peer to app*/
+     /*struct bsa_drv_peer_event_data *pdata;
+     */
+ 
+     switch(drv_event){
+-
+         case WLC_E_PROBREQ_MSG_RX:
+-        {
+-            /*char macAddr[18];
+-            printf("\033[0;32;33m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
+-            zyWifiGetIfHwAddr(ntohs(drv_msg->event.ifname), macAddr);
+-            printf("\033[0;32;34m [KAREN TEST %s:%d macAddr=%s] \033[0m \n", __FUNCTION__, __LINE__, macAddr);
+-            zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, pdata->bssid, drv_msg);*/
+-            break;
+-	    }
+-
++			//zyWifiGetIfHwAddr(drv_msg->event.ifname, bssid);
++			//zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
++			//printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
++			//printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
++			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, drv_msg);
++			break;
+         case WLC_E_ASSOC_IND:
+-        {
+-            //char macAddr[18];
+-            //uint8 bssid[ETHER_ADDR_LEN];
+-            printf("\033[0;32;33m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
+-            //zyWifiGetIfHwAddr(ntohs(drv_msg->event.ifname), macAddr, bssid);
+-            zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, drv_msg);
+-           // struct bsa_drv_probe_event_info probe_event;
+-           // probe_event.sta_mac=*(drv_msg->event.addr.octet);
+-
+-            break;
+-
+-        }
++			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, drv_msg);
++			break;
+         case WLC_E_DEAUTH:
+         case WLC_E_DISASSOC_IND:
+-        {
+-		    break;
+-        }
++			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, drv_msg);
++			break;
+         case WLC_E_REASON_BSSTRANS_REQ:
+-        {
+-
+-		    break;
+-        }
++			break;
+         default:
+-        {
+-            char macAddr[18]; uint8 bssid[ETHER_ADDR_LEN]; zyWifiGetIfHwAddr((drv_msg->event.ifname), bssid);
+-            unsigned char sta_mac[18]; zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
+-            printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
+-            printf("\033[0;32;34m [KAREN TEST %s:%d version=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.version));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d flags=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.flags));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.event_type));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d status=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.status));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d reason=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.reason));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d auth_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.auth_type));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d datalen=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.datalen));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d ifname=%s] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifname));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d ifidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifidx));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.bsscfgidx));
+-            printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
+-            printf("\033[0;32;34m [KAREN TEST %s:%d macAddr=%s] \033[0m \n", __FUNCTION__, __LINE__, macAddr);
+-            break;
+-        }
+-    }
++			zyWifiGetIfHwAddr(drv_msg->event.ifname, bssid);
++			zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
++			printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
++			printf("\033[0;32;34m [KAREN TEST %s:%d version=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.version));
++			printf("\033[0;32;34m [KAREN TEST %s:%d flags=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.flags));
++			printf("\033[0;32;34m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.event_type));
++			printf("\033[0;32;34m [KAREN TEST %s:%d status=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.status));
++			printf("\033[0;32;34m [KAREN TEST %s:%d reason=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.reason));
++			printf("\033[0;32;34m [KAREN TEST %s:%d auth_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.auth_type));
++			printf("\033[0;32;34m [KAREN TEST %s:%d datalen=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.datalen));
++			printf("\033[0;32;34m [KAREN TEST %s:%d ifname=%s] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifname));
++			printf("\033[0;32;34m [KAREN TEST %s:%d ifidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifidx));
++			printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.bsscfgidx));
++			printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
++			printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
++			break;
++	}
+ }
+ 
+ zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid){
+@@ -1480,9 +1471,9 @@
+ 
+ 	sprintf(buf, "wlctl -i %s sta_info %s > %s", ifname, macAddr, filePath);
+ 	system(buf);
+-	if((fp = fopen(filePath, "r"))){
+-		while(fgets(buf, len, fp) != NULL){
+-			if((tmp = strchr(buf, ':')) != NULL){
++	if ((fp = fopen(filePath, "r"))) {
++		while (fgets(buf, len, fp) != NULL) {
++			if ((tmp = strchr(buf, ':')) != NULL) {
+ 				*tmp = '\0';
+ 				tmp2 = tmp+1;
+ 			}
+@@ -1491,92 +1482,100 @@
+ 			tmp = buf;
+ 
+ 			if(tmp2){ // check has value
+-				if((str = strstr(tmp,"rate of last tx pkt"))){
+-					if((tmp3 = strstr(tmp2,"kbps"))) *tmp3 = '\0';
+-					if((tmp3 = strchr(tmp2,'-'))) *tmp3 = '\0';
++				if ((str = strstr(tmp,"rate of last tx pkt"))) {
++					if((tmp3 = strstr(tmp2,"kbps")))
++						*tmp3 = '\0';
++					if((tmp3 = strchr(tmp2,'-')))
++						*tmp3 = '\0';
+ 					sta->lastTxRate = strtoul(tmp2, NULL, 0);
+ 				}
+-				else if((str = strstr(tmp,"rate of last rx pkt"))){
+-					if((tmp3 = strstr(tmp2,"kbps"))) *tmp3 = '\0';
+-					if((tmp3 = strchr(tmp2,'-'))) *tmp3 = '\0';
++				else if ((str = strstr(tmp,"rate of last rx pkt"))) {
++					if ((tmp3 = strstr(tmp2,"kbps")))
++						*tmp3 = '\0';
++					if ((tmp3 = strchr(tmp2,'-')))
++						*tmp3 = '\0';
+ 					sta->lastRxRate = strtoul(tmp2, NULL, 0);
+ 				}
+-				else if((str = strstr(tmp,"flags"))){
++				else if ((str = strstr(tmp,"flags"))){
+ 					tmp3 = str+5;
+ 					flags = strtoul(tmp3, NULL, 0);
+ 				}
+ 
+-				else if((str = strstr(tmp,"HT caps"))){
++				else if ((str = strstr(tmp,"HT caps"))) {
+ 					tmp3 = str+7;
+ 					ht_flags = strtoul(tmp3, NULL, 0);
+-                    if(str = strstr(tmp2,"SGI20")){
++                    if (str = strstr(tmp2,"SGI20")) {
+                         sprintf(bandwidth, "SGI20");
+ 				    }
+-                    if(str = strstr(tmp2,"SGI40")){
++                    if (str = strstr(tmp2,"SGI40")) {
+                         sprintf(bandwidth, "SGI40");
+ 				    }
+ 				}
+-				else if((str = strstr(tmp,"VHT caps"))){
++				else if ((str = strstr(tmp,"VHT caps"))) {
+ 					tmp3 = str+8;
+ 					vht_flags = strtoul(tmp3, NULL, 0);
+ 				}
+-				else if((str = strstr(tmp,"rateset"))){
++				else if ((str = strstr(tmp,"rateset"))) {
+ 					tmp3 = str+8;
+ 					strncpy(rate_set, tmp3, sizeof(rate_set)-1);
+ 				}
+-                else if((str = strstr(tmp,"MCS SET"))){
++                else if ((str = strstr(tmp,"MCS SET"))) {
+ 					tmp3 = str+10;
+ 					strncpy(mcs_set, tmp3, sizeof(mcs_set)-1);
+ 				}
+-				else if(type == 'd'){
+-					if((str = strstr(tmp,"tx total pkts"))){
++				else if (type == 'd') {
++					if ((str = strstr(tmp,"tx total pkts"))) {
+ 						sta->txPackets = strtoul(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"tx total bytes"))){
++					else if ((str = strstr(tmp,"tx total bytes"))) {
+ 						sta->txBytes = strtoull(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"rx data pkts"))){
++					else if ((str = strstr(tmp,"rx data pkts"))) {
+ 						sta->rxPackets = strtoul(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"rx data bytes"))){
++					else if ((str = strstr(tmp,"rx data bytes"))) {
+ 						sta->rxBytes = strtoull(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"tx failures"))){
++					else if ((str = strstr(tmp,"tx failures"))) {
+ 						sta->txErrors = strtoul(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"tx pkts retries"))){
++					else if ((str = strstr(tmp,"tx pkts retries"))) {
+ 						sta->txRetrans = strtoul(tmp2, NULL, 0);
+ 					}
+-					else if((str = strstr(tmp,"tx pkts retry exhausted"))){
++					else if ((str = strstr(tmp,"tx pkts retry exhausted"))) {
+ 						sta->txRetransFail = strtoul(tmp2, NULL, 0);
+ 					}
+ 				}
+ 			}
+ 		}
+-		if(flags){
+-			if(flags & WL_STA_AUTHE) sta->authState = 1;
+-			else sta->authState = 0;
+-			if(flags & WL_STA_ASSOC){
+-				if(flags & WL_STA_VHT_CAP){
++		if (flags) {
++			if (flags & WL_STA_AUTHE) {
++				sta->authState = 1;
++			}
++			else {
++				sta->authState = 0;
++			}
++			if (flags & WL_STA_ASSOC) {
++				if (flags & WL_STA_VHT_CAP) {
+ 					sta->standard = IEEE80211_WLPROTO_11AC;
+-					if(vht_flags & WL_STA_SGI160) // if no SGI ??
++					if (vht_flags & WL_STA_SGI160) // if no SGI ??
+ 						sta->bandwidth = 160;
+ 					else
+ 						sta->bandwidth = 80;
+ 				}
+-				else if(ht_flags != 0){
++				else if (ht_flags != 0) {
+ 					sta->standard = IEEE80211_WLPROTO_11N;
+ 					//if(ht_flags & WL_STA_CAP_40MHZ)
+ 						sta->bandwidth = (!strcmp(bandwidth,"SGI40"))?40:20;
+ 				}
+-				else{
++				else {
+                     sta->bandwidth = 20 ;
+                     // BAND_A is 5G
+ 					if(zycheckWlBand(ifname) == BAND_A){
+ 						sta->standard = IEEE80211_WLPROTO_11A;
+ 					}
+ 					else{
+-						if(zygetMaxRateSet(rate_set) > 11)
++						if (zygetMaxRateSet(rate_set) > 11)
+ 							sta->standard = IEEE80211_WLPROTO_11G;
+ 						else
+ 							sta->standard = IEEE80211_WLPROTO_11B;
+@@ -1634,8 +1633,8 @@
+     struct ChSpec chanspec;
+     struct zy_sta_info_t sta_info;
+ 	uint32_t cnt = 0;
+-
+     tx_buff = malloc(BSA_MAX_EVENT_LEN);
++    memset(&sta_info, 0, sizeof(sta_info));
+ 	if (!tx_buff)
+ 		return -ENOMEM;
+ 	event_buffer = (void *)tx_buff;
+@@ -1646,69 +1645,93 @@
+     }
+     switch (event_id) {
+         case BSA_EVENT_PROBE_REQ:
+-    		/*probe_event = (void *)(drv_event);
+-    		msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+-    		event_buffer->event_id = BSA_EVENT_PROBE_REQ;
+-    		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-    		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-    		bsa_printf(BSA_DEBUG, "BSA_PEER: probe bssid="MACSTR"", MAC2STR(bssid));
+-    		event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
+-    		preq_info = (void *)&event_buffer->payload;
+-    		memcpy(preq_info->sta_mac, probe_event->sta_mac, ETH_ALEN);
+-    		preq_info->rssi = probe_event->rssi - BSA_RSSI_CORRECTION;
+-    		preq_info->rx_ss_info = probe_event->rss;
+-    		preq_info->max_phy_rate = probe_event->max_phy_rate;
+-    		bsa_get_reltime(&time);
+-    		preq_info->tstamp = time.sec;
+-    		preq_info->curr_band = probe_event->curr_band;
+-    		preq_info->channel = probe_event->channel;
+-    		preq_info->sta_capab = probe_event->band_width;
+-    		preq_info->sta_capab |= ((probe_event->vht_capab & 0x1)?0x10:0);
+-    		preq_info->sta_capab |= ((probe_event->vht_capab & 0x2)?0x80:0);
+-    		preq_info->sta_capab |= ((probe_event->bss_transition?0x8:0));
+-    		preq_info->sta_capab |= (probe_event->mu_mimo_capab << 5); */
+-		break;
++			//printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			//probe_event = (void *)(drv_event);
++			msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
++			event_buffer->event_id = htole16(BSA_EVENT_PROBE_REQ);
++			event_buffer->api_ver = BSA_PEER_API_VERSION;
++			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
++			event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
++			preq_info = (void *)&event_buffer->payload;
++			preq_info->curr_band = htole16(BSA_OPER_BAND_2G);
++			memcpy(preq_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
++			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n", MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac));
++			zyget_sta_info(drv_msg->event.ifname, preq_info->sta_mac, &sta_info, 'b');
++			//zyget_sta_rssi(drv_msg->event.ifname, preq_info->sta_mac, &sta_info);
++			//preq_info->rssi = sta_info.rssi - BSA_RSSI_CORRECTION;
++			//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
++			zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
++			//printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(preq_info->sta_mac), preq_info->channel, preq_info->curr_band, preq_info->sta_capab);
++			preq_info->rx_ss_info = htole16(sta_info.rx_ss_info);
++			preq_info->max_phy_rate = htole16(sta_info.max_phy_rate);
++			bsa_get_reltime(&time);
++			preq_info->tstamp = htole64(time.sec);
++			preq_info->curr_band = htole16(BSA_OPER_BAND_2G);
++			preq_info->channel = chanspec.channel;
++			preq_info->sta_capab=0;
++			if(sta_info.bandwidth==40)
++				preq_info->sta_capab |= BIT(0);
++			if(sta_info.standard==IEEE80211_WLPROTO_11AC)
++				preq_info->sta_capab |= BIT(4);
++			break;
+         case BSA_EVENT_CONNECT_COMPLETE:
+-            printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
+-    		//connect_event = (void *)(drv_event);
+-    		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+-    		event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
+-    		event_buffer->api_ver = BSA_PEER_API_VERSION;
+-            zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
+-    		//memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+-    		event_buffer->payload_len = htole16(sizeof(struct bsa_evt_sta_connect_info));
+-    		connect_info = (void *)&event_buffer->payload;
+-    		memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
+-    		connect_info->curr_band = htole16(BSA_OPER_BAND_2G);
+-            zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
+-    		connect_info->channel = chanspec.channel;
+-
+-            zyget_sta_info(drv_msg->event.ifname, connect_info->sta_mac, &sta_info, 'b');
+-            zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
+-            printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
+-
+-            connect_info->rx_ss_info = htole16(sta_info.rx_ss_info);
+-    		connect_info->max_phy_rate = htole16(sta_info.max_phy_rate);
+-            //Bit0-3: supported bandwidth Bit3: IEEE802.11v support
+-            //Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
+-            connect_info->sta_capab=0;
+-            if(sta_info.bandwidth==40)
+-                connect_info->sta_capab |= BIT(0);
+-            if(sta_info.standard==IEEE80211_WLPROTO_11AC)
+-                connect_info->sta_capab |= BIT(4);
+-		    connect_info->sta_capab |= BIT(6);
+-
+-            printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac), connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
+-
+-    		/*bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
+-    				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
+-    				connect_info->channel, connect_info->curr_band);*/
+-    		break;
++			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			//connect_event = (void *)(drv_event);
++			msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
++			event_buffer->event_id = htole16(BSA_EVENT_CONNECT_COMPLETE);
++			event_buffer->api_ver = BSA_PEER_API_VERSION;
++			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
++			//memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++			event_buffer->payload_len = htole16(sizeof(struct bsa_evt_sta_connect_info));
++			connect_info = (void *)&event_buffer->payload;
++			memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
++			connect_info->curr_band = htole16(BSA_OPER_BAND_2G);
++			zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
++			connect_info->channel = chanspec.channel;
++
++			zyget_sta_info(drv_msg->event.ifname, connect_info->sta_mac, &sta_info, 'b');
++			zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
++			printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
++
++			connect_info->rx_ss_info = htole16(sta_info.rx_ss_info);
++			connect_info->max_phy_rate = htole16(sta_info.max_phy_rate);
++			//Bit0-3: supported bandwidth Bit3: IEEE802.11v support
++			//Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
++			connect_info->sta_capab=0;
++			if(sta_info.bandwidth==40)
++				connect_info->sta_capab |= BIT(0);
++			if(sta_info.standard==IEEE80211_WLPROTO_11AC)
++				connect_info->sta_capab |= BIT(4);
++			connect_info->sta_capab |= BIT(6);
++
++			printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac), connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
++
++			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
++					MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
++					connect_info->channel, connect_info->curr_band);*/
++			break;
++        case BSA_EVENT_DISASSOC:
++			printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			//sta_disconnect_event = (void *)(drv_event);
++			msg_len = STA_DISCONNECT_INFO_LEN;
++			event_buffer->event_id = htole16(BSA_EVENT_DISASSOC);
++			event_buffer->api_ver = BSA_PEER_API_VERSION;
++			zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
++			event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
++			sta_disconnect_info = (void*)&event_buffer->payload;
++			memcpy(sta_disconnect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
++			uint8_t direction=0;
++			sta_disconnect_info->direction = direction;
++			sta_disconnect_info->reason_code = htole16((uint16_t)drv_msg->event.reason);
++			printf("bssid====="MACSTR", sta_mac======"MACSTR"\n", MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac));
++			/*bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
++					MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
++					sta_disconnect_info->direction, sta_disconnect_info->reason_code);*/
++		    break;
+         default:
+-    		bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
+-    		free(tx_buff);
+-    		return -1;
+-
++			bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
++			free(tx_buff);
++			return -1;
+ 	}
+ 
+     nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-04-05 15:49:59.040349383 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-04-05 15:49:59.060349383 +0800
+@@ -28,37 +28,15 @@
+ #include "libzywlan.h"
+ #include "zylib.h"
+ 
+-#if defined(BIG_ENDIAN)
+-#define le_to_host16(n) bswap_16(n)
+-#define host_to_le16(n) bswap_16(n)
+-#define be_to_host16(n) (n)
+-#define host_to_be16(n) (n)
+-#define le_to_host32(n) bswap_32(n)
+-#define host_to_le32(n) bswap_32(n)
+-#define be_to_host32(n) (n)
+-#define host_to_be32(n) (n)
+-#define le_to_host64(n) bswap_64(n)
+-#define host_to_le64(n) bswap_64(n)
+-#define be_to_host64(n) (n)
+-#define host_to_be64(n) (n)
+-#elif defined(LITTLE_ENDIAN)
+-#define le_to_host16(n) ((__u16) (__le16) (n))
+-#define host_to_le16(n) ((__le16) (__u16) (n))
+-#define be_to_host16(n) bswap_16((__u16) (be16) (n))
+-#define host_to_be16(n) ((__be16) bswap_16((n)))
+-#define le_to_host32(n) ((__u32) (__le32) (n))
+-#define host_to_le32(n) ((__le32) (__u32) (n))
+-#define be_to_host32(n) bswap_32((__u32) (__be32) (n))
+-#define host_to_be32(n) ((__be32) bswap_32((n)))
+-#define le_to_host64(n) ((__u64) (__le64) (n))
+-#define host_to_le64(n) ((__le64) (__u64) (n))
+-#define be_to_host64(n) bswap_64((__u64) (__be64) (n))
+-#define host_to_be64(n) ((__be64) bswap_64((n)))
+-#else
+-#error Could not determine CPU byte order
+-#endif
+-
+-
++typedef struct bcm_dri_event {
++	struct ether_header eth;
++	bcmeth_hdr_t bcm_hdr;
++	wl_event_msg_t event;
++	struct ether_addr *addr;	/* used to keep a trace of the potential present of an address in wlc_event_msg_t */
++	struct wlc_if *wlcif;		/* pointer to wlcif */
++	void *data;					/* used to hang additional data on an event */
++	struct wlc_event *next;
++}  bcm_dri_event_t;
+ 
+ #define BSA_RSSI_CORRECTION	90
+ #define BSA_PEER_MAX_MSG_LEN	2048

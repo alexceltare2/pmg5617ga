@@ -1,0 +1,208 @@
+Index: linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/chips/spi_nand_flash.c	2017-04-22 16:45:25.931518415 +0800
++++ linux-2.6.36/drivers/mtd/chips/spi_nand_flash.c	2017-04-24 16:46:36.252181190 +0800
+@@ -99,7 +99,6 @@
+ #endif
+ 
+ #ifdef TCSUPPORT_NAND_BMT
+-#define POOL_GOOD_BLOCK_PERCENT 8/100
+ #define SLAVE_IMAGE_OFFSET 0xf00000
+ extern int nand_logic_size;
+ #endif
+@@ -233,7 +232,6 @@
+ #define _SPI_NAND_GET_DEVICE_INFO_PTR		&(_current_flash_info_t)
+ 
+ 
+-unsigned long spinand_spinlock_flags;
+ static DEFINE_SPINLOCK(spinandLock);
+ 
+ 
+@@ -1975,6 +1973,7 @@
+ 	u32						block_index = 0;
+ 	u32						erase_len	= 0;
+ 	SPI_NAND_FLASH_RTN_T	rtn_status  = SPI_NAND_FLASH_RTN_NO_ERROR;
++	unsigned long			spinand_spinlock_flags;
+ 	
+ #if	defined(TCSUPPORT_NAND_BMT) && !defined(LZMA_IMG)
+ 
+@@ -2317,6 +2316,7 @@
+ 	u32					 			addr_offset;
+ 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
+ 	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
++	unsigned long					spinand_spinlock_flags;
+ 		
+ #if	defined(TCSUPPORT_NAND_BMT) && !defined(LZMA_IMG)
+     unsigned short phy_block_bbt;
+@@ -2429,6 +2429,7 @@
+ 	u32					 			addr_offset;
+ 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
+ 	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
++	unsigned long					spinand_spinlock_flags;
+ 		
+ #if	defined(TCSUPPORT_NAND_BMT) && !defined(LZMA_IMG)
+     unsigned short phy_block_bbt;
+@@ -2532,7 +2533,8 @@
+ {
+ 		u32 							logical_block, physical_block;
+ 		struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
+-		SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;	
++		SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
++		unsigned long					spinand_spinlock_flags;
+ 	
+ #if	defined(TCSUPPORT_NAND_BMT) && !defined(LZMA_IMG)
+ 		unsigned short phy_block_bbt;
+@@ -2597,7 +2599,8 @@
+ 	u32			 					page_number, data_offset;
+ 	u32			 					read_addr, physical_read_addr, remain_len, logical_block, physical_block;
+ 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
+-	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;	
++	SPI_NAND_FLASH_RTN_T			rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
++	unsigned long					spinand_spinlock_flags;
+ 
+ #if	defined(TCSUPPORT_NAND_BMT) && !defined(LZMA_IMG)
+     unsigned short phy_block_bbt;
+@@ -2859,6 +2862,7 @@
+ {
+ 	u32 					i=0;
+ 	SPI_NAND_FLASH_RTN_T	rtn_status = SPI_NAND_FLASH_RTN_PROBE_ERROR;
++	unsigned long			spinand_spinlock_flags;
+ 
+ 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_probe: start \n");
+ 	
+@@ -2947,6 +2951,10 @@
+ #define POOL_GOOD_BLOCK_PERCENT 8/100
+ #define MAX_BMT_SIZE_PERCENTAGE 1/10
+ 
++#if defined(TCSUPPORT_CT_PON)
++#define MAX_BMT_SIZE_PERCENTAGE_CT 1/8
++#endif
++
+ extern int nand_flash_avalable_size;
+ 
+ 
+@@ -3116,12 +3124,7 @@
+ 	maximum_bmt_block_count = total_block * MAX_BMT_SIZE_PERCENTAGE;
+ 
+ #if defined(TCSUPPORT_CT_PON)
+-	maximum_bmt_block_count = BMT_SIZE_FOR_RESERVE_AREA;
+-
+-	if( need_valid_block_num > BMT_SIZE_FOR_RESERVE_AREA)
+-	{
+-		need_valid_block_num = BMT_SIZE_FOR_RESERVE_AREA;	
+-	}
++	maximum_bmt_block_count = total_block * MAX_BMT_SIZE_PERCENTAGE_CT;
+ #endif
+ 
+ 	
+@@ -4037,6 +4040,7 @@
+ {
+ 	u32    idx;
+ 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
++	unsigned long					spinand_spinlock_flags;
+ 
+ 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "[spinand_read_page_hwecc]: enter, page=0x%x \n", page);	
+ 	
+@@ -4384,6 +4388,7 @@
+     struct spi_device		*spi_nand;
+ 	struct SPI_NAND_FLASH_INFO_T	*ptr_dev_info_t;
+ 	int ret;
++	unsigned long spinand_spinlock_flags;
+ 
+ 	ptr_dev_info_t	= _SPI_NAND_GET_DEVICE_INFO_PTR;
+ 
+@@ -4564,8 +4569,8 @@
+ 				_SPI_NAND_SEMAPHORE_UNLOCK();				
+ 
+ #ifdef TCSUPPORT_CT_PON
+-			    	nand_flash_avalable_size = chip->chipsize - (BMT_SIZE_FOR_RESERVE_AREA * 0x20000);
+-					mtd->size = chip->chipsize - (BMT_SIZE_FOR_RESERVE_AREA * 0x20000);
++				nand_flash_avalable_size = chip->chipsize - (chip->chipsize * MAX_BMT_SIZE_PERCENTAGE_CT);
++				mtd->size = nand_flash_avalable_size;
+ #else					
+ 
+ 	mtd->size = nand_logic_size;					
+Index: linux-2.6.36/drivers/mtd/ralink/bmt.c
+===================================================================
+--- linux-2.6.36.orig/drivers/mtd/ralink/bmt.c	2017-04-22 16:45:21.993550436 +0800
++++ linux-2.6.36/drivers/mtd/ralink/bmt.c	2017-04-24 16:45:54.632181190 +0800
+@@ -89,6 +89,7 @@
+ 
+ static u32 bmt_block_index = 0;     // bmt block index
+ static bmt_struct bmt;              // dynamic created global bmt table
++static phys_bmt_struct phys_bmt_table;	// global physical bmt table
+ 
+ static u32 bbt_block_index = 0;     // bbt block index
+ static init_bbt_struct init_bbt;    // dynamic created global bbt table
+@@ -337,21 +338,21 @@
+ 
+ static void fill_nand_bmt_buffer(bmt_struct *bmt, u8 *dat, u8 *oob)
+ {
+-    phys_bmt_struct phys_bmt;
++    phys_bmt_struct *phys_bmt = &phys_bmt_table;
+ 
+     dump_bmt_info(bmt);
+ 
+     // fill phys_bmt_struct structure with bmt_struct
+-    memset(&phys_bmt, 0xFF, sizeof(phys_bmt));
++    memset(phys_bmt, 0xFF, sizeof(phys_bmt_struct));
+     
+-    memcpy(phys_bmt.header.signature, MAIN_SIGNATURE, SIGNATURE_SIZE);
+-    phys_bmt.header.version = BMT_VERSION;
+-    phys_bmt.header.mapped_count = bmt->mapped_count;
+-    memcpy(phys_bmt.table, bmt->table, sizeof(bmt_entry) * bmt_block_count);
++    memcpy(phys_bmt->header.signature, MAIN_SIGNATURE, SIGNATURE_SIZE);
++    phys_bmt->header.version = BMT_VERSION;
++    phys_bmt->header.mapped_count = bmt->mapped_count;
++    memcpy(phys_bmt->table, bmt->table, sizeof(bmt_entry) * bmt_block_count);
+ 
+-    phys_bmt.header.checksum = cal_bmt_checksum(&phys_bmt, bmt_block_count);
++    phys_bmt->header.checksum = cal_bmt_checksum(phys_bmt, bmt_block_count);
+ 
+-    memcpy(dat + MAIN_SIGNATURE_OFFSET, &phys_bmt, sizeof(phys_bmt));
++    memcpy(dat + MAIN_SIGNATURE_OFFSET, phys_bmt, sizeof(phys_bmt_struct));
+ 
+     return;
+ }
+@@ -381,7 +382,7 @@
+ static int load_bmt_data(int start, int pool_size)
+ {
+     int bmt_index = start + pool_size - 1;        // find from the end
+-    phys_bmt_struct phys_table;
++    phys_bmt_struct *phys_table = &phys_bmt_table;
+     int i;
+  
+     MSG("begin to search BMT from block %d \n", bmt_index);
+@@ -407,18 +408,18 @@
+ 
+         MSG("Match bmt signature @ block: %d\n", bmt_index);
+         
+-        memcpy(&phys_table, dat_buf + MAIN_SIGNATURE_OFFSET, sizeof(phys_table));
++        memcpy(phys_table, dat_buf + MAIN_SIGNATURE_OFFSET, sizeof(phys_bmt_struct));
+ 
+-        if (!valid_bmt_data(&phys_table))
++        if (!valid_bmt_data(phys_table))
+         {
+             MSG("BMT data is not correct: %d\n", bmt_index);
+             continue;
+         }
+         else
+         {
+-            bmt.mapped_count = phys_table.header.mapped_count;
+-            bmt.version = phys_table.header.version;
+-            memcpy(bmt.table, phys_table.table, bmt.mapped_count * sizeof(bmt_entry));
++            bmt.mapped_count = phys_table->header.mapped_count;
++            bmt.version = phys_table->header.version;
++            memcpy(bmt.table, phys_table->table, bmt.mapped_count * sizeof(bmt_entry));
+ 
+             MSG("bmt found at block: %d, mapped block: %d\n", bmt_index, bmt.mapped_count);
+ 
+@@ -872,7 +873,7 @@
+ #endif
+     
+ 
+-    if (size > 0 && size < MAX_BMT_SIZE)
++    if (size > 0 && size <= MAX_BMT_SIZE)
+     {
+         MSG("Init bmt table, size: %d\n", size);
+         bmt_block_count = size;

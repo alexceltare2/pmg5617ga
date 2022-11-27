@@ -1,0 +1,295 @@
+Index: linux-2.6.36/net/bridge/br_private.h
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_private.h	2017-04-27 16:41:09.634817321 +0800
++++ linux-2.6.36/net/bridge/br_private.h	2017-04-27 17:00:09.916819238 +0800
+@@ -105,6 +105,12 @@
+ 	unsigned char 			host_mac[6];	/*host mac address*/
+ 	u8				version;//version = 4 or 6
+ #endif
++#if 1//ZYXEL	
++	struct list_head		host_list;
++	spinlock_t			host_lock;
++	int				host_count;
++#endif
++
+ };
+ 
+ struct net_bridge_mdb_entry
+@@ -319,6 +325,11 @@
+     struct net_bridge	*br;
+ 	char				name[IFNAMSIZ];
+ };
++struct group_host_list
++{       
++    struct list_head 	list;
++	char 				host_mac[20];
++};
+ #endif
+ 
+ #define BR_INPUT_SKB_CB(__skb)	((struct br_input_skb_cb *)(__skb)->cb)
+Index: linux-2.6.36/net/bridge/br_multicast.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_multicast.c	2017-04-27 16:45:44.572217318 +0800
++++ linux-2.6.36/net/bridge/br_multicast.c	2017-04-27 17:00:09.916819238 +0800
+@@ -428,12 +428,19 @@
+ }
+ 
+ static void br_multicast_del_pg(struct net_bridge *br,
++#if 1//ZYXEL	
++				struct net_bridge_port_group *pg, struct net_bridge_port *port, int byPort)
++#else
+ 				struct net_bridge_port_group *pg)
++#endif
+ {
+ 	struct net_bridge_mdb_htable *mdb = br->mdb;
+ 	struct net_bridge_mdb_entry *mp;
+ 	struct net_bridge_port_group *p;
+ 	struct net_bridge_port_group **pp;
++#if 1//ZYXEL	
++	char mac_addr[20];
++#endif
+ 
+ 	mp = br_mdb_ip_get(mdb, &pg->addr);
+ 	if (WARN_ON(!mp))
+@@ -455,18 +462,32 @@
+ 		}	
+ 	#endif
+ 	#endif
+-		rcu_assign_pointer(*pp, p->next);
+-		hlist_del_init(&p->mglist);
+-		del_timer(&p->timer);
+-		del_timer(&p->query_timer);
+-		call_rcu_bh(&p->rcu, br_multicast_free_pg);
+-
+-		if (!mp->ports && hlist_unhashed(&mp->mglist) &&
+-		    netif_running(br->dev))
+-			mod_timer(&mp->timer, jiffies);
+-		#if defined(TCSUPPORT_XPON_IGMP) || defined(TCSUPPORT_MULTICAST_SPEED)
+-			igmp_hwnat_update_all(br);
+-		#endif
++#if 1//ZYXEL	
++		if(!byPort)
++		{
++			sprintf(mac_addr, "%02x:%02x:%02x:%02x:%02x:%02x",port->macAddr.addr[0], port->macAddr.addr[1], port->macAddr.addr[2], port->macAddr.addr[3], port->macAddr.addr[4], port->macAddr.addr[5]);
++			del_host_mac_to_list(pg, mac_addr);			
++		}
++
++		if(byPort || pg->host_count == 0)
++		{
++			//printk("[%s](%d) delete port group.\n",__func__,__LINE__,pg->host_count);
++#endif
++			rcu_assign_pointer(*pp, p->next);
++			hlist_del_init(&p->mglist);
++			del_timer(&p->timer);
++			del_timer(&p->query_timer);
++			call_rcu_bh(&p->rcu, br_multicast_free_pg);
++
++			if (!mp->ports && hlist_unhashed(&mp->mglist) &&
++			    netif_running(br->dev))
++				mod_timer(&mp->timer, jiffies);
++			#if defined(TCSUPPORT_XPON_IGMP) || defined(TCSUPPORT_MULTICAST_SPEED)
++				igmp_hwnat_update_all(br);
++			#endif
++#if 1//ZYXEL
++		}
++#endif
+ 		return;
+ 	}
+ 
+@@ -493,7 +514,11 @@
+ 
+ 		spin_lock(&br->multicast_lock);
+ 		hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
+-			br_multicast_del_pg(br, pg);
++#if 1//ZYXEL
++		br_multicast_del_pg(br, pg, port, 1);
++#else
++		br_multicast_del_pg(br, pg);
++#endif
+ 		spin_unlock(&br->multicast_lock);
+ #if 0
+ 	rcu_read_lock();
+@@ -562,8 +587,12 @@
+ 			mod_timer(&pg->timer, (jiffies + 2*HZ));
+ 	}
+ 	else
+-#endif		
++#endif
++#if 1//ZYXEL	
++	br_multicast_del_pg(br, pg, pg->port, 1);
++#else
+ 	br_multicast_del_pg(br, pg);
++#endif
+ 
+ out:
+ 	spin_unlock(&br->multicast_lock);
+@@ -1098,6 +1127,9 @@
+ 	struct net_bridge_port_group **pp;
+ 	unsigned long now = jiffies;
+ 	int err;
++#if 1//ZYXEL	
++	char mac_addr[20];
++#endif
+ 
+ 	spin_lock(&br->multicast_lock);
+ 	if (!netif_running(br->dev) ||
+@@ -1131,6 +1163,10 @@
+ 			}
+ #endif
+ 			memcpy(&p->src_entry, &port->src_entry, sizeof(port->src_entry));
++#if 1//ZYXEL
++			sprintf(mac_addr, "%02x:%02x:%02x:%02x:%02x:%02x",port->macAddr.addr[0], port->macAddr.addr[1], port->macAddr.addr[2], port->macAddr.addr[3], port->macAddr.addr[4], port->macAddr.addr[5]);
++			add_host_mac_to_list(p, mac_addr, 1);
++#endif
+ 			goto found;
+ 		}		
+ #else
+@@ -1162,6 +1198,13 @@
+ 	memcpy(p->group_mac, port->groupMacAddr.addr, sizeof(port->groupMacAddr.addr));
+ 	memcpy(p->host_mac, port->macAddr.addr, sizeof(port->macAddr.addr));
+ 	p->version = port->version;
++#if 1//ZYXEL	
++	p->host_count = 0;
++	sprintf(mac_addr, "%02x:%02x:%02x:%02x:%02x:%02x",port->macAddr.addr[0], port->macAddr.addr[1], port->macAddr.addr[2], port->macAddr.addr[3], port->macAddr.addr[4], port->macAddr.addr[5]);
++	spin_lock_init(&p->host_lock);
++	INIT_LIST_HEAD(&p->host_list);
++	add_host_mac_to_list(p, mac_addr, 0);
++#endif 
+ #endif
+ 	p->addr = *group;
+ 	p->port = port;
+@@ -1226,7 +1269,11 @@
+ {
+ 		if(br->quick_leave){
+ 			spin_lock(&br->multicast_lock);
++#if 1//ZYXEL	
++			br_multicast_del_pg(br, pg, port, 0);
++#else
+ 			br_multicast_del_pg(br, pg);
++#endif
+ 			spin_unlock(&br->multicast_lock);
+ 		}
+ 		else
+@@ -1270,7 +1317,11 @@
+ {
+ 		if(br->quick_leave){
+ 			spin_lock(&br->multicast_lock);
++#if 1//ZYXEL	
++			br_multicast_del_pg(br, pg, port, 0);
++#else
+ 			br_multicast_del_pg(br, pg);
++#endif
+ 			spin_unlock(&br->multicast_lock);
+ 		}
+ 		else
+@@ -1469,7 +1520,11 @@
+ 
+ 	spin_lock(&br->multicast_lock);
+ 	hlist_for_each_entry_safe(pg, p, n, &port->mglist, mglist)
++#if 1//ZYXEL
++		br_multicast_del_pg(br, pg, port, 1);
++#else
+ 		br_multicast_del_pg(br, pg);
++#endif
+ 
+ 	if (!hlist_unhashed(&port->rlist))
+ 		hlist_del_init_rcu(&port->rlist);
+@@ -1546,7 +1601,11 @@
+ 				pg =br_ip4_multicast_get_port_group(br, port, group, type==IGMPV3_ALLOW_NEW_SOURCES?1:0);
+ 				if((NULL != pg) && (pg->src_entry.filt_mode == MCAST_EXCLUDE)){
+ 					spin_lock(&br->multicast_lock);
++#if 1//ZYXEL
++					br_multicast_del_pg(br, pg, port, 1);
++#else
+ 					br_multicast_del_pg(br, pg);
++#endif
+ 					spin_unlock(&br->multicast_lock);
+ 				}
+ 				port->src_entry.filt_mode = MCAST_INCLUDE;
+@@ -1574,7 +1633,11 @@
+ 				pg =br_ip4_multicast_get_port_group(br, port, group, 1);
+ 				if((NULL!=pg) && (pg->src_entry.filt_mode == MCAST_INCLUDE)){
+ 					spin_lock(&br->multicast_lock);
++#if 1//ZYXEL
++					br_multicast_del_pg(br, pg, port, 1);
++#else
+ 					br_multicast_del_pg(br, pg);
++#endif
+ 					spin_unlock(&br->multicast_lock);
+ 					dirty = 1;
+ 				}
+@@ -1968,7 +2031,11 @@
+ 
+ #ifdef TCSUPPORT_IGMPSNOOPING_ENHANCE
+ 		if(br->quick_leave){
++#if 1//ZYXEL
++			br_multicast_del_pg(br, p, port, 1);
++#else
+ 			br_multicast_del_pg(br, p);
++#endif
+ 			goto out;
+ 		}
+ #endif		
+@@ -4289,6 +4356,62 @@
+ #endif
+ 
+ #if 1 //ZYXEL
++void add_host_mac_to_list(struct net_bridge_port_group *gp, char* mac, int check)
++{
++	struct group_host_list *entry = NULL;
++	struct group_host_list *ptr = NULL;
++	struct group_host_list *p = NULL;
++	int host_mac_find = 0;
++
++	if(check)
++	{
++		spin_lock(&gp->host_lock);
++		list_for_each_entry_safe(entry, ptr, &gp->host_list, list)
++	    {
++	        if(strcmp(entry->host_mac, mac)== 0)
++	        {
++	        	host_mac_find = 1;
++				//printk("[%s](%d) host mac = %s exist\n",__func__,__LINE__, mac);
++	        }
++	    }
++		spin_unlock(&gp->host_lock);
++	}
++
++	if(host_mac_find != 1)
++	{
++		p = kzalloc(sizeof(*p), GFP_KERNEL);
++		if (p == NULL)
++			return ERR_PTR(-ENOMEM);
++
++		strcpy(p->host_mac, mac);		
++		spin_lock(&gp->host_lock);	
++		gp->host_count++;
++		list_add(&p->list, &gp->host_list);		
++		spin_unlock(&gp->host_lock);
++		//printk("[%s](%d) host_mac = %s host_count = %d\n",__func__,__LINE__,mac,gp->host_count);
++	}
++}
++
++void del_host_mac_to_list(struct net_bridge_port_group *gp,char* mac)
++{
++	struct group_host_list *entry = NULL;
++	struct group_host_list *ptr = NULL;
++
++	spin_lock(&gp->host_lock);
++	list_for_each_entry_safe(entry, ptr, &gp->host_list, list)
++    {
++        if(strcmp(entry->host_mac, mac)== 0)
++        {
++			gp->host_count--;		
++            list_del(&entry->list);
++			kfree(entry);
++            entry = NULL;
++			//printk("[%s](%d) host_mac = %s host_count = %d\n",__func__,__LINE__,mac,gp->host_count);
++        }
++    }
++	spin_unlock(&gp->host_lock);
++}
++
+ #ifdef TCSUPPORT_MULTICAST_SPEED
+ void addbr_to_bridge_list(struct net_bridge *br)
+ {

@@ -1,0 +1,13 @@
+Index: qsteer-v0.10.3/csm/csm_message.c
+===================================================================
+--- qsteer-v0.10.3.orig/csm/csm_message.c	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/csm_message.c	2017-04-07 16:09:15.949218553 +0800
+@@ -695,6 +695,8 @@
+ 	sta_table_t *sta;
+ 	sta_seen_bssid_t *staseenbssid;
+ 	int32_t rssi;
++
++	CSM_DEBUG("Recv probe req from client[%" MACFMT "]", MACARG(ep->sta_mac));
+ 	if (bss) {
+ 		sta =
+ 		    csm_station_find_or_add(csm->station_db, ep->sta_mac);

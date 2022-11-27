@@ -1,0 +1,13 @@
+Index: busybox-1_20_1/init/init.c
+===================================================================
+--- busybox-1_20_1.orig/init/init.c	2017-07-19 15:33:07.746654682 +0800
++++ busybox-1_20_1/init/init.c	2017-07-19 16:26:47.410716443 +0800
+@@ -908,6 +908,8 @@
+ 
+ static void run_shutdown_and_kill_processes(void)
+ {
++	system("ifconfig pon down");
++	system("zyims.sh stop");
+ 	/* Run everything to be run at "shutdown".  This is done _prior_
+ 	 * to killing everything, in case people wish to use scripts to
+ 	 * shut things down gracefully... */

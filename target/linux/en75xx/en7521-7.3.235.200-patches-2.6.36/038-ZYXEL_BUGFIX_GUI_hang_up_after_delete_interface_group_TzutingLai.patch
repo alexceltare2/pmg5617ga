@@ -1,0 +1,12 @@
+Index: linux-2.6.36/net/core/dev.c
+===================================================================
+--- linux-2.6.36.orig/net/core/dev.c	2017-04-26 03:23:04.000000000 +0800
++++ linux-2.6.36/net/core/dev.c	2017-04-27 16:59:03.010353386 +0800
+@@ -6336,6 +6336,7 @@
+ 							|| dev->name[0]=='p'
+ 							|| dev->name[0]=='d' //for dslite
+ 							|| dev->name[0]=='r'
++							|| dev->name[0]=='b' //for bridge
+ 							|| dev->name[0]=='o'))
+ 			{
+ 				//for network interface, e.g. nas0,nas0_1,eth0,eth0.1,ppp0,ra0,oam,omci

@@ -1,0 +1,63 @@
+Index: qtn_image/source/configs/topaz_rgmii_config
+===================================================================
+--- qtn_image.orig/source/configs/topaz_rgmii_config	2015-08-01 15:09:12.000000000 +0800
++++ qtn_image/source/configs/topaz_rgmii_config	2015-08-27 01:48:11.492484543 +0800
+@@ -356,7 +356,7 @@
+ #prefix0#buildroot/#
+ BR2_PACKAGE_PORTMAP=y
+ #prefix0#buildroot/#
+-BR2_PACKAGE_PHP=y
++# BR2_PACKAGE_PHP is not set
+ #prefix0#buildroot/#
+ # BR2_PACKAGE_PPPD is not set
+ #prefix0#buildroot/#
+@@ -422,7 +422,7 @@
+ #prefix0#buildroot/#
+ # BR2_PACKAGE_SYSSTAT is not set
+ #prefix0#buildroot/#
+-BR2_PACKAGE_MINIHTTPD=y
++# BR2_PACKAGE_MINIHTTPD is not set
+ #prefix0#buildroot/#
+ BR2_BLOCKDEV_SUPPORT=y
+ #prefix0#buildroot/#
+@@ -601,7 +601,7 @@
+ #prefix0#buildroot/#
+ # BR2_TARGET_RUBY_SOC2_ETH_IP_DHCP is not set
+ #prefix0#buildroot/#
+-# BR2_TARGET_RUBY_STATELESS is not set
++BR2_TARGET_RUBY_STATELESS=y
+ 
+ #
+ # Generic System Support
+@@ -1547,7 +1547,7 @@
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ CONFIG_HOSTNAME=y
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+-CONFIG_HTTPD=y
++# CONFIG_HTTPD is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_RANGES is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+@@ -1557,19 +1557,19 @@
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_SETUID is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+-CONFIG_FEATURE_HTTPD_BASIC_AUTH=y
++# CONFIG_FEATURE_HTTPD_BASIC_AUTH is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_AUTH_MD5 is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_CONFIG_WITH_MIME_TYPES is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+-CONFIG_FEATURE_HTTPD_CGI=y
++# CONFIG_FEATURE_HTTPD_CGI is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_SET_REMOTE_PORT_TO_ENV is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+-CONFIG_FEATURE_HTTPD_ENCODE_URL_STR=y
++# CONFIG_FEATURE_HTTPD_ENCODE_URL_STR is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#
+ # CONFIG_FEATURE_HTTPD_ERROR_PAGES is not set
+ #prefix7#buildroot/package/busybox/busybox-1.10.3/#

@@ -1,0 +1,40 @@
+Index: linux-2.6.36/include/linux/skbuff.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/skbuff.h	2017-11-13 16:31:26.902099148 -0800
++++ linux-2.6.36/include/linux/skbuff.h	2017-11-13 16:39:20.462108232 -0800
+@@ -332,6 +332,19 @@
+         ((skb->pon_mark & DS_PKT_FORM_WAN) && (1 == skb->gem_type) ); \
+     })
+ #endif
++
++#if 1 //defined(ZYXEL_GEMPORT_RATE_LIMIT)
++#if (defined(TCSUPPORT_WAN_GPON) || defined (TCSUPPORT_WAN_EPON))
++#define SKB_GET_PON_MARK(skb) \
++    ({ \
++        typecheck(struct sk_buff *, skb); \
++        (skb->pon_mark); \
++    })
++#else
++#define SKB_GET_PON_MARK(skb)	(0)
++#endif
++#endif
++
+ /** 
+  *	struct sk_buff - socket buffer
+  *	@next: Next buffer in list
+Index: linux-2.6.36/net/core/ecnt_net_utility.c
+===================================================================
+--- linux-2.6.36.orig/net/core/ecnt_net_utility.c	2017-11-13 16:31:26.930099148 -0800
++++ linux-2.6.36/net/core/ecnt_net_utility.c	2017-11-13 16:37:44.346106388 -0800
+@@ -88,7 +88,10 @@
+ EXPORT_SYMBOL(match_multicast_vtag);
+ #endif
+ 
+-
++#if defined(ZYXEL_GEMPORT_RATE_LIMIT)
++int (*gpon_downstream_mapping_switch)(void);
++EXPORT_SYMBOL(gpon_downstream_mapping_switch);
++#endif
+ /************************************************************************
+ *                  F U N C T I O N   D E F I N I T I O N S
+ *************************************************************************

@@ -1,0 +1,165 @@
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command
+@@ -31,6 +31,45 @@ case "$1" in
+ 		shift
+ 		do_update_regulatory_db $*
+ 		;;
++	zyxel_check)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		if [ "$3" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		if [ "$3" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		/scripts/run_ctl_zyxel zyxel_check $2 $3 $4
++		
++		if [ $? != 0 ]; then
++			exit 1
++		fi
++		;;
++	zyxel_config_network)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		if [ ! -f /tmp/is_startprod_done ]; then
++			echo "system is not up..."
++			exit 1
++		fi
++		
++		/scripts/run_ctl_zyxel config_network $2 &
++		
++		if [ $? != 0 ]; then
++			exit 1
++		fi
++		;;
+ 	*):
+ 		exit 1
+ esac
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/run_ctl_zyxel
+===================================================================
+--- /dev/null
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/run_ctl_zyxel
+@@ -0,0 +1,110 @@
++#!/bin/sh
++
++CTL_FW_IP=1.1.1.1
++CTL_SERVER_IP=169.254.123.1
++CTL_HOST_IP=169.254.123.2
++CTL_HOST_MASK=255.255.255.252
++CTL_INTF=br0
++CTL_VLANID=2
++CTL_VLAN_INTF=$CTL_INTF.$CTL_VLANID
++PHY_INTF=eth1_0
++
++if [ "$1" == "" ]; then
++	echo "no input argument ...."
++	exit 1
++fi
++
++config_network()
++{
++	sleep 2
++
++	## for zyxel network
++	echo "Config zyxel network ....."
++
++	if [ -d /sys/class/net/$CTL_VLAN_INTF ]; then
++		vconfig rem $CTL_VLAN_INTF
++	fi
++
++	echo "Create VLAN $CTL_VLANID on $CTL_INTF ....."
++	vconfig add $CTL_INTF $CTL_VLANID
++	echo "Config $CTL_VLAN_INTF IP [$CTL_HOST_IP] ....."
++	ifconfig $CTL_VLAN_INTF $CTL_HOST_IP netmask $CTL_HOST_MASK up
++
++	arp -d $CTL_SERVER_IP
++	arp -s $CTL_SERVER_IP $1
++
++	## config eth1_0 trunk vlan ID 2 for zyxel
++	call_qcsapi vlan_config $PHY_INTF enable
++	call_qcsapi vlan_config $PHY_INTF trunk $CTL_VLANID
++
++	ifconfig br0:qtn 0.0.0.0
++	ifconfig br0 0.0.0.0
++
++	echo "Config zyxel network finished ....."
++}
++
++zyxel_check()
++{
++	arp -d $CTL_FW_IP
++	arp -s $CTL_FW_IP $1
++	
++	QTN_REV=$(/scripts/get_rev_num)
++	if [ $? == 0 ]; then
++		QTN_VER=${QTN_REV#revision number*is}
++		QTN_VER=$(echo "$QTN_VER" | sed -e 's/^[ \t]*//')
++		
++		if [ "$QTN_VER" == "$2" ]; then
++			echo "match"
++		elif [ "$QTN_VER" == "v$2" ]; then
++			echo "match"
++		else
++			echo "no match"
++			exit 1
++		fi
++	else
++		exit 1
++	fi
++	
++	ZYXEL_SUB_REV=$(cat /etc/zyxel_subversion)
++	if [ "$3" == "$ZYXEL_SUB_REV" ]; then
++		echo "match"
++	else
++		echo "no match"
++		exit 1
++	fi
++}
++
++case "$1" in
++	zyxel_check)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		if [ "$3" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		
++		if [ "$4" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		zyxel_check $2 $3 $4
++		;;
++	config_network)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		if [ ! -f /tmp/is_startprod_done ]; then
++			echo "system is not up..."
++			exit 1
++		fi
++		config_network $2
++		;;
++	*)
++		exit 1
++		;;
++esac
++

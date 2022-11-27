@@ -1,0 +1,286 @@
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network	2017-01-24 10:36:17.985627082 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/S93zyxel_network	2017-01-24 10:36:18.073627083 +0800
+@@ -10,6 +10,16 @@
+ 		ifconfig br0 0.0.0.0
+ 	fi
+ 	ifconfig br0:qtn 1.1.1.2 netmask 255.255.255.252
++	
++	mkdir -p /tmp/power_tables/default
++	cp -rf /etc/power_tables_default/*.conf /tmp/power_tables
++	
++	for f in /etc/power_tables_default/tx_power_*.txt ;
++	do
++		cp -f $f /tmp/power_tables/default
++        f1=${f##*/}
++		ln -sf ./default/$f1 /tmp/power_tables/$f1
++	done
+ }
+ 
+ stop() {
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/ruby.mk
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/ruby.mk	2017-01-24 10:36:17.985627082 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/ruby.mk	2017-01-24 10:36:18.073627083 +0800
+@@ -144,13 +144,21 @@
+ ruby_initd: $(ruby-initd-files-y:%=$(TARGET_DIR)/etc/init.d/%)
+ 
+ ruby_power_tables:
+-	mkdir -p $(TARGET_DIR)/etc/power_tables
++	mkdir -p $(TARGET_DIR)/etc/power_tables_default
+ ifneq (${wildcard $(RUBY_POWER_TABLES_DIR)/power_table.conf},)
+-	@cp -f $(RUBY_POWER_TABLES_DIR)/power_table.conf $(TARGET_DIR)/etc/power_tables/
++	@cp -f $(RUBY_POWER_TABLES_DIR)/power_table.conf $(TARGET_DIR)/etc/power_tables_default/
+ endif
+-ifneq (${wildcard $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt},)
+-	@cp -f $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt $(TARGET_DIR)/etc/power_tables/
++ifneq (${wildcard $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt},)#
++	@cp -f $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt $(TARGET_DIR)/etc/power_tables_default/
+ endif
++	ln -sf /tmp/power_tables $(TARGET_DIR)/etc/power_tables
++#	mkdir -p $(TARGET_DIR)/etc/power_tables
++#ifneq (${wildcard $(RUBY_POWER_TABLES_DIR)/power_table.conf},)
++#	@cp -f $(RUBY_POWER_TABLES_DIR)/power_table.conf $(TARGET_DIR)/etc/power_tables/
++#endif
++#ifneq (${wildcard $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt},)#
++#	@cp -f $(RUBY_POWER_TABLES_DIR)/tx_power_*.txt $(TARGET_DIR)/etc/power_tables/
++#endif
+ 
+ 
+ ruby_regulatory_db:
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command	2017-01-24 10:36:18.021627082 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/remote_command	2017-01-24 10:36:18.073627083 +0800
+@@ -70,6 +70,46 @@
+ 			exit 1
+ 		fi
+ 		;;
++		
++	zyxel_upgrade_powertable)
++	
++		if [ -f /tmp/is_startprod_done ]; then
++			echo "system is already up..."
++			exit 1
++		fi
++		
++		/scripts/run_ctl_zyxel upgrade_powertable
++		
++		if [ $? != 0 ]; then
++			exit 1
++		fi
++		;;	
++	
++	zyxel_check_powertable)
++		/scripts/run_ctl_zyxel check_powertable 
++		
++		if [ $? != 0 ]; then
++			exit 1
++		fi
++		;;
++		
++	zyxel_set_region_powertable)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		if [ -f /tmp/is_startprod_done ]; then
++			echo "system is already up..."
++			exit 1
++		fi
++		
++		/scripts/run_ctl_zyxel set_region_powertable $2 
++		
++		if [ $? != 0 ]; then
++			exit 1
++		fi
++		;;
++		
+ 	*):
+ 		exit 1
+ esac
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/run_ctl_zyxel
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/scripts/run_ctl_zyxel	2017-01-24 10:36:18.021627082 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/run_ctl_zyxel	2017-01-24 10:36:18.073627083 +0800
+@@ -8,6 +8,9 @@
+ CTL_VLANID=2
+ CTL_VLAN_INTF=$CTL_INTF.$CTL_VLANID
+ PHY_INTF=eth1_0
++POWER_TABLE_DIR=/tmp/power_tables
++QTN_PWR_FILE="QTN_PowerTable.tar.gz"
++QTN_PWR_CONF="QTN_Region"
+ 
+ if [ "$1" == "" ]; then
+ 	echo "no input argument ...."
+@@ -43,6 +46,122 @@
+ 	echo "Config zyxel network finished ....."
+ }
+ 
++upgrade_powertable()
++{
++	echo "Download $QTN_PWR_CONF form $CTL_FW_IP ....."
++	tftp -g -r $QTN_PWR_CONF $CTL_FW_IP -l ${POWER_TABLE_DIR}/$QTN_PWR_CONF
++	if [ $? != 0 ]; then
++		echo "Cannot download $QTN_PWR_CONF form $CTL_FW_IP ....."
++		exit 1
++	fi
++	
++	echo "Download $QTN_PWR_FILE form $CTL_FW_IP ....."
++	tftp -g -r $QTN_PWR_FILE $CTL_FW_IP -l ${POWER_TABLE_DIR}/$QTN_PWR_FILE
++	if [ $? != 0 ]; then
++		echo "Cannot download $QTN_PWR_FILE form $CTL_FW_IP ....."
++		exit 1
++	fi
++	
++	tar zxf ${POWER_TABLE_DIR}/$QTN_PWR_FILE -C ${POWER_TABLE_DIR}/
++	if [ $? != 0 ]; then
++		echo "Cannot untar $QTN_PWR_FILE ....."
++		exit 1
++	fi
++}
++
++check_powertable()
++{
++	local file_num
++	local checksum
++	
++	echo "Check power table ....."
++	
++	if [ ! -f ${POWER_TABLE_DIR}/$QTN_PWR_CONF ]; then
++		echo -e "\033[7mWarning: No Region power config in ${POWER_TABLE_DIR}"
++		exit 1
++	fi
++	
++	file_num=$(find ${POWER_TABLE_DIR}/ -name "tx_power_*.txt" | wc -l)
++	if [ ${file_num} -gt 0 ]; then
++		echo "Found power table in ${POWER_TABLE_DIR}"
++
++		for file in ${POWER_TABLE_DIR}/tx_power_*.txt ;
++		do
++			checksum=`md5sum ${file} | cut -d ' ' -f 1`
++			echo "${file}, checksum = ${checksum}"
++		done
++	else
++		echo -e "\033[7mWarning: No power table was found in ${POWER_TABLE_DIR}"
++		exit 1
++	fi
++}
++
++# $1 => country name, 
++set_region_powertable()
++{
++	local found=0
++	local linkFile
++	local linkName
++	
++	local name=`cat ${POWER_TABLE_DIR}/$QTN_PWR_CONF | grep "^$1," | cut -d "," -f 1`
++	local region=`cat ${POWER_TABLE_DIR}/$QTN_PWR_CONF | grep "^$1," | cut -d "," -f 2`
++	local file=`cat ${POWER_TABLE_DIR}/$QTN_PWR_CONF | grep "^$1," | cut -d "," -f 3`
++	
++	if [ "$name" == "" -o "$region" == "" ]; then
++		echo "No find the power table setting for region($1) ....."
++		exit 1
++	fi
++	
++	if [ -z $file ]; then
++		file="default"
++	fi
++	
++	echo "Set region($name) power table ....."
++
++	for f in ${POWER_TABLE_DIR}/tx_power_*.txt ;
++	do
++		linkName=${f##*/}
++		if [ "$linkName" != "${linkName##*$region}" ]; then
++			found=1
++			break
++		fi
++	done
++	
++	if [ $found != 1 ]; then
++		linkName="tx_power_QSR1000_$region.txt"
++	fi
++	
++	linkFile=$file
++	if [ "$linkFile" != "default" ]; then
++		if [ ! -f ${POWER_TABLE_DIR}/$linkFile ]; then
++			echo "Cannot find file (${POWER_TABLE_DIR}/$linkFile) ....."
++			echo "Use default power setting for region($name) ..."
++			linkFile="default"
++		fi
++	fi
++	
++	if [ "$linkFile" == "default" ]; then
++		linkFile="default/$linkName"
++		if [ ! -f ${POWER_TABLE_DIR}/$linkFile ]; then
++			linkFile=""
++		fi
++	fi 
++	
++	if [ "$linkFile" != "" ]; then
++		ln -sf $linkFile ${POWER_TABLE_DIR}/$linkName
++	
++		echo "link power setting file $linkName -> $linkFile"
++		
++		if [ $? != 0 ]; then
++			echo "Cannot link file ....."
++			exit 1
++		fi
++	else
++		echo "No find the power table setting for region($2) ....."
++		exit 1
++	fi
++}
++
+ zyxel_check()
+ {
+ 	arp -d $CTL_FW_IP
+@@ -103,6 +222,33 @@
+ 		fi
+ 		config_network $2
+ 		;;
++		
++	upgrade_powertable)
++
++		if [ -f /tmp/is_startprod_done ]; then
++			echo "system is already up..."
++			exit 1
++		fi
++
++		upgrade_powertable
++		;;
++	
++	check_powertable)
++		check_powertable
++		;;
++		
++	set_region_powertable)
++		if [ "$2" == "" ]; then
++			echo "no input argument..."
++			exit 1
++		fi
++		if [ -f /tmp/is_startprod_done ]; then
++			echo "system is already up..."
++			exit 1
++		fi
++		set_region_powertable $2 
++		;;
++		
+ 	*)
+ 		exit 1
+ 		;;
+Index: qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/generate_power_checksum
+===================================================================
+--- qtn_image.orig/source/buildroot/target/device/Quantenna/Ruby/scripts/generate_power_checksum	2017-01-13 16:14:19.000000000 +0800
++++ qtn_image/source/buildroot/target/device/Quantenna/Ruby/scripts/generate_power_checksum	2017-01-24 10:36:18.073627083 +0800
+@@ -2,7 +2,7 @@
+ 
+ POWER_TABLE_DIR=/etc/power_tables
+ 
+-file_num=$(find ${POWER_TABLE_DIR} -name "tx_power_*.txt" | wc -l)
++file_num=$(find ${POWER_TABLE_DIR}/ -name "tx_power_*.txt" | wc -l)
+ if [ ${file_num} -gt 0 ]
+ then
+ 	echo "Found power table in ${POWER_TABLE_DIR}"

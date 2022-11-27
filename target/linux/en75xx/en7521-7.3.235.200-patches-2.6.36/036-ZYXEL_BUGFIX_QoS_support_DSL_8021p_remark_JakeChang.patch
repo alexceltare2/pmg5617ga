@@ -1,0 +1,37 @@
+Index: linux-2.6.36/include/linux/skb_defines.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/skb_defines.h	2017-04-27 16:47:47.297549320 +0800
++++ linux-2.6.36/include/linux/skb_defines.h	2017-04-27 16:56:19.452819238 +0800
+@@ -23,24 +23,24 @@
+ #define SKBMARK_SET_PC_ID(MARK, TC) \
+     ((MARK & ~SKBMARK_PC_ID_M) | (TC << SKBMARK_PC_ID_S))	
+ 	
+-/* flow_id = mark[13:8]; for QoS Classifier */
+-#define SKBMARK_FLOW_ID_S       8
+-#define SKBMARK_FLOW_ID_M       (0x3F << SKBMARK_FLOW_ID_S)
++/* flow_id = mark[15:12]; for QoS Classifier */
++#define SKBMARK_FLOW_ID_S       12
++#define SKBMARK_FLOW_ID_M       (0xF << SKBMARK_FLOW_ID_S)
+ #define SKBMARK_GET_FLOW_ID(MARK) \
+     ((MARK & SKBMARK_FLOW_ID_M) >> SKBMARK_FLOW_ID_S)
+ #define SKBMARK_SET_FLOW_ID(MARK, FLOW) \
+     ((MARK & ~SKBMARK_FLOW_ID_M) | (FLOW << SKBMARK_FLOW_ID_S))
+ 
+-/* VID_ACTION = mark[25:24], Change the bits used for Qos vlan operation. Original bits and WMM overlap */
+-#define SKBMARK_VID_ACTION_S       24
+-#define SKBMARK_VID_ACTION_M       (0x03 << SKBMARK_VID_ACTION_S)
++/* VID_ACTION = mark[11:8], Change the bits used for Qos vlan operation. Original bits and WMM overlap */
++#define SKBMARK_VID_ACTION_S       8
++#define SKBMARK_VID_ACTION_M       (0xF << SKBMARK_VID_ACTION_S)
+ #define SKBMARK_GET_VID_ACTION(MARK) \
+ 	((MARK & SKBMARK_VID_ACTION_M) >> SKBMARK_VID_ACTION_S)
+ #define SKBMARK_SET_VID_ACTION(MARK, FLOW) \
+ 	((MARK & ~SKBMARK_VID_ACTION_M) | (FLOW << SKBMARK_VID_ACTION_S))
+ 
+-/* POLICER = mark[15:14], Change the bits used for Qos policer */
+-#define SKBMARK_POLICER_S       14
++/* POLICER = mark[25:24], Change the bits used for Qos policer */
++#define SKBMARK_POLICER_S       24
+ #define SKBMARK_POLICER_M       (0x03 << SKBMARK_POLICER_S)
+ #define SKBMARK_GET_POLICER(MARK) \
+     ((MARK & SKBMARK_POLICER_M) >> SKBMARK_POLICER_S)

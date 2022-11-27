@@ -1,0 +1,330 @@
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-04-26 16:05:08.943338995 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-04-26 16:48:50.291230900 +0800
+@@ -22,7 +22,7 @@
+ CFLAGS += -I$(WIRELESS_DRIVER_SRC_PATH)/shared/bcmwifi/include -I$(WIRELESS_DRIVER_SRC_PATH)/include
+ CFLAGS += -I$(ZYWIFI_BUILD_DIR)
+ CFLAGS += -I$(ZYWIFI_BUILD_DIR)/Broadcom
+-
++CFLAGS += -I../../libqcsapi_client_37.4.0.97
+ 
+ #QTN
+ CFLAGS += -I../include/
+@@ -32,7 +32,7 @@
+ CFLAGS += -ljson -pthread
+ 
+ 
+-BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o
++BSAPEEROBJS = bsa_peer_entity.o bsa_driver_brcm.o bsa_peer_event.o ../common/bsa_debug.o ../../libzcfg_msg-1.0/zcfg_msg.o
+ FASTSTEERSTAOBJS = fast_steer_sta.o
+ 
+ LIBOBJS = $(BSAPEEROBJS)
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.c	2017-04-26 16:05:08.963338995 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.c	2017-04-26 16:07:57.375030100 +0800
+@@ -8,6 +8,7 @@
+ #include <arpa/inet.h>
+ #include <proto/ethernet.h>
+ #include <proto/bcmevent.h>
++#include <stdint.h>
+ #include "libzywlan.h"
+ #include "zylib.h"
+ #include "bsa_peer_event.h"
+@@ -21,6 +22,11 @@
+ #include <pthread.h>
+ #include <sys/prctl.h>
+ 
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#include "zcfg_eid.h"
++#include "zcfg_msg.h"
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
+ #define FAT_MONITOR_MIN_PERIOD 10
+ 
+ static pthread_t fat_monitor_thread = 0;
+@@ -308,8 +314,117 @@
+ 
+ }
+ 
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++/*!
++ *  send mac filter request to wifi daemon
++ *
++ *  @param[in] ifname   WiFi interface name.
++ *  @param[in] cmd      0 - disable, 1 - deny, 2 - allow.
++ *  @param[in] mac      MAC address.
++ *
++ *  @return true  - successful.
++ *          false - failed.
++ */
++static bool _send_wifid_mac_filter(
++    char        *ifname,
++    char        cmd,
++    char        *mac
++)
++{
++	zcfgRet_t   ret;
++	void        *sendBuf;
++	zcfgMsg_t   *sendMsgHdr;
++	int         buf_size;
++	char        *payload;
++	int         payload_len;
++	char        *c;
++	int         i;
++
++    fprintf(stderr, "%s line %d, %s(): ifname = %s, cmd = %d, ",
++        __FILE__, __LINE__, __FUNCTION__, ifname, cmd);
++
++    if (mac) {
++        fprintf(stderr, " mac = %02X:%02X:%02X:%02X:%02X:%02X\n",
++            (uint8_t)(mac[0]), (uint8_t)(mac[1]), (uint8_t)(mac[2]),
++            (uint8_t)(mac[3]), (uint8_t)(mac[4]), (uint8_t)(mac[5]));
++    } else {
++        fprintf(stderr, " mac = NULL\n");
++    }
++
++    /*
++        1 : for type, IEEE80211_ADDR_LEN : for mac, 1 for '\0'
++        therefore,
++            *payload is type
++            (payload + 1) is MAC address
++            (payload + 7) is ifname
++    */
++    payload_len = 1 + IEEE80211_ADDR_LEN + strlen(ifname) + 1;
++	buf_size    = sizeof(zcfgMsg_t) + payload_len;
++
++    // allocate memory and the memory will be set to zero.
++	sendBuf = calloc(1, buf_size);
++
++    // pack send msg
++	sendMsgHdr = (zcfgMsg_t*)sendBuf;
++
++	sendMsgHdr->type   = ZCFG_MSG_BSA_STA_FILTER;
++	sendMsgHdr->srcEid = ZCFG_EID_BSA_PEER;
++	sendMsgHdr->dstEid = ZCFG_EID_WIFID;
++	sendMsgHdr->length = payload_len;
++
++    /*
++        build_dir\target-mips_uClibc-0.9.32\libzcfg_msg-1.0\zcfg_msg.h
++            char reserve[28];
++    */
++    for (c = ifname, i = 0; (i < IFNAMSIZ) && (*c) && ((*c) != '.'); ++c, ++i) {
++        sendMsgHdr->reserve[i] = *c;
++    }
++
++    /* payload */
++    payload = ((char *)sendBuf) + sizeof(zcfgMsg_t);
++
++    // type
++    *payload = cmd;
++
++    // MAC address
++    ++payload;
++    if (mac) {
++        memcpy(payload, mac, IEEE80211_ADDR_LEN);
++    }
++
++    // ifname
++    payload += IEEE80211_ADDR_LEN;
++    strcpy(payload, ifname);
++
++    /* send to wifi daemon */
++	ret = zcfgMsgSendAndGetReply(sendMsgHdr, NULL, 0);
++
++	return (ret == ZCFG_SUCCESS_AND_NO_REPLY);
++}
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
+ int bsa_brcm_set_bsa_status(void *priv, int index, uint8_t status)
+ {
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
++	if (index < 0) {
++        fprintf(stderr, "%s line %d, %s(), ERROR: invalid index = %d\n",
++            __FILE__, __LINE__, __FUNCTION__, index);
++		return -1;
++	}
++
++    fprintf(stderr, "%s line %d, %s(): intf_name[%d] = %s, status = %u\n",
++        __FILE__, __LINE__, __FUNCTION__, index, bsa_conf_info[index].ifname, status);
++
++    if (_send_wifid_mac_filter(bsa_conf_info[index].ifname, 0, NULL) == false) {
++        fprintf(stderr, "%s line %d, %s(), ERROR: fail to send msg to WIFId\n",
++            __FILE__, __LINE__, __FUNCTION__);
++        return -1;
++    }
++
++    return 0;
++
++#else /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 	struct bsa_peer_entity *bsa_peer = priv;
+ 	int retval = 0;
+ 
+@@ -338,6 +453,7 @@
+ #endif
+ 
+ 	return retval;
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ }
+ 
+ int bsa_brcm_get_intf_status(void *priv, int index)
+@@ -625,6 +741,48 @@
+ 
+ int bsa_brcm_update_mac_filter_table(void *priv, int index, void *cmd_info)
+ {
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
++	struct ieee80211_bsa_mac_filter     *bsa_mac_filter = (void *)cmd_info;
++	char                                cmd;
++
++	if (index < 0 || index >= BSA_PEER_MAX_INTF_COUNT) {
++        fprintf(stderr, "%s line %d, %s(), ERROR: invalid index = %d\n",
++            __FILE__, __LINE__, __FUNCTION__, index);
++		return -1;
++	}
++
++	if (bsa_mac_filter == NULL) {
++        fprintf(stderr, "%s line %d, %s(), ERROR: bsa_mac_filter == NULL\n",
++            __FILE__, __LINE__, __FUNCTION__);
++		return -1;
++	}
++
++    // SONiQ is little endian, so swap the byte
++    cmd = (char)((bsa_mac_filter->allow_mac >> 8) & 0x00FF);
++
++    fprintf(stderr, "%s line %d, %s(): intf_name[%d] = %s, cmd = %d, MAC = %02X:%02X:%02X:%02X:%02X:%02X\n",
++        __FILE__, __LINE__, __FUNCTION__, index, bsa_conf_info[index].ifname, cmd,
++        bsa_mac_filter->sta_mac[0], bsa_mac_filter->sta_mac[1], bsa_mac_filter->sta_mac[2],
++        bsa_mac_filter->sta_mac[3], bsa_mac_filter->sta_mac[4], bsa_mac_filter->sta_mac[5]);
++
++    if (cmd < 1 || cmd > 2) {
++        fprintf(stderr, "%s line %d, %s(), ERROR: invalid cmd = %d\n",
++            __FILE__, __LINE__, __FUNCTION__, cmd);
++		return -1;
++    }
++
++    if (_send_wifid_mac_filter(bsa_conf_info[index].ifname, cmd, (char *)(bsa_mac_filter->sta_mac)) == false)
++    {
++        fprintf(stderr, "%s line %d, %s(), ERROR: fail to send msg to WIFId\n",
++            __FILE__, __LINE__, __FUNCTION__);
++        return -1;
++    }
++
++    return 0;
++
++#else /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
+ 	struct bsa_peer_entity *bsa_peer = priv;
+ 	struct ieee80211_bsa_mac_filter *bsa_mac_filter = (void *)cmd_info;
+ 	struct iwreq iwr;
+@@ -651,6 +809,8 @@
+ 	}
+ #endif
+ 	return retval;
++
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ }
+ 
+ int bsa_brcm_send_btm_req(void *priv, int index, void *cmd_info)
+@@ -718,7 +878,7 @@
+ 	fp = fopen(CurChannel_file, "r");
+ 	if(fp != NULL) {
+ 		while( fgets( buf, len, fp ) ) {
+-			sscanf("%hu %[^(*]", &channel);
++			sscanf("%hu %[^(*]", (char *)&channel);
+ 		}
+ 		fclose(fp);
+ 		unlink(CurChannel_file);
+Index: bsa-1.0.1/bsa_peer/bsa_driver_brcm.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver_brcm.h	2017-04-26 16:05:08.947338995 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver_brcm.h	2017-04-26 16:47:48.693730900 +0800
+@@ -1,6 +1,9 @@
+ #ifndef __BSA_DRIVER_BRCM_H__
+ #define __BSA_DRIVER_BRCM_H__
+ 
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#include "net80211/ieee80211_ioctl.h"
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ #define QTN_DRV_MLME_DISASSOC		2
+ #define QTN_DRV_MLME_DEAUTH		3
+@@ -9,7 +12,9 @@
+ #define BSA_PROBE_EVENT_REQ		1
+ #define BSA_CONNECT_COMPLETE_EVENT	2
+ 
++#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ #define	IEEE80211_ADDR_LEN	6		/* size of 802.11 address */
++
+ /*
+  * The 802.11 spec says at most 2007 stations may be
+  * associated at once.  For most AP's this is way more
+@@ -19,6 +24,7 @@
+  */
+ #define	IEEE80211_AID_MAX		2007
+ #define	IEEE80211_AID_DEF		128
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ enum interface_status {
+ 	BSA_INTF_STATE_RUNNING	= 1,
+@@ -34,6 +40,7 @@
+ 	uint32_t offset;
+ }__attribute__((packed));
+ 
++#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ /*
+  * 802.11n HT Capability IE
+  */
+@@ -83,6 +90,7 @@
+ 	u_int8_t	vhtop_info[3];		/* VHT Operation info */
+ 	u_int8_t	vhtop_bvhtmcs[2];	/* basic VHT MSC and NSS set */
+ }__attribute__((packed));
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ struct bsa_drv_intf_info {
+ 	union {
+@@ -221,6 +229,7 @@
+ 	uint8_t payload[0];
+ }__attribute__((packed));
+ 
++#if 0 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ struct ieee80211_bsa_sta_info {
+ 	uint64_t ts_last_rx_pkt;
+ 	uint64_t ts_last_tx_pkt;
+@@ -236,6 +245,7 @@
+ 	/* STA info provided by driver */
+ 	struct ieee80211_bsa_sta_info ieee80211_bsa_sta_info_var[IEEE80211_AID_DEF];
+ }__attribute__((packed));
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
+ 
+ struct fat_monitor_thread_t {
+ 	uint8_t ifname[BSA_IFNAMSIZ];
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-26 16:05:08.943338995 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-27 14:55:17.318977183 +0800
+@@ -59,6 +59,11 @@
+ #include "bsa_peer_event.h"
+ #include "bsa_peer_entity.h"
+ 
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++#include "zcfg_eid.h"
++#include "zcfg_msg.h"
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
+ #ifndef BSA_SUBVERSION
+ #define BSA_SUBVERSION	"unknown"
+ #endif
+@@ -191,6 +196,10 @@
+ 
+ 	printf("bsa_peer(%s-%s) started\n", BSA_VERSION, BSA_SUBVERSION);
+ 
++#if 1 /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++    zcfgEidInit(ZCFG_EID_BSA_PEER, "bsa_peer");
++#endif /* #36467, MAC filter with SONiQ, cpwang, 2017-04-18 10:56:46 */
++
+ 	ret = bsa_read_conf_file();
+ 
+ 	if (daemonize && os_daemonize(pid_file)) {

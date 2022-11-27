@@ -1,0 +1,894 @@
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-04-16 08:42:30.442495721 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-04-16 08:47:04.476947856 +0800
+@@ -41,18 +41,26 @@
+ **                                                                           **
+ *******************************************************************************
+ EH0*/
++#if 1 //Zyxel
+ #include <endian.h>
++#endif
+ #include "bsa_peer_event.h"
++#if 1 //Zyxel
+ #include "bcmwifi_channels.h"
+-
++#else
++#include <netinet/ether.h>
++#endif
+ 
+ 
+ int bsa_debug_level = BSA_INFO;
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
++#if 1 //Zyxel
+ extern const struct bsa_driver_ops bsa_driver_brcm_ops;
++#else
++extern const struct bsa_driver_ops bsa_driver_qtn_ops;
++#endif
+ extern uint16_t vap_count;
+-//extern zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, char *macAddr);
+ 
+ static int  get_bsa_conf_info(struct bsa_command * bsa_cmd_buff)
+ {
+@@ -69,6 +77,19 @@
+ 	return retval;
+ }
+ 
++
++static int get_bsa_conf_info_by_name(char *name)
++{
++	int i;
++	for (i=0;i<vap_count;i++) {
++		if (strcmp(bsa_conf_info[i].ifname, name)==0)
++			return i;
++	}
++	return -1;
++}
++
++
++
+ static int bsa_peer_recv_cmd_from_bsaapp(void *cmd_ctx, void *buffer, size_t cmd_len)
+ {
+ 	struct bsa_peer_entity *bsa_peer = (void *) cmd_ctx;
+@@ -327,17 +348,6 @@
+ 	return;
+ }
+ 
+-void zyChangeEndian(bcm_event_t *Oripkt) {
+-	Oripkt->event.version=ntohs(Oripkt->event.version);
+-	Oripkt->event.flags=ntohs(Oripkt->event.flags);
+-	Oripkt->event.event_type=ntohl(Oripkt->event.event_type);
+-	Oripkt->event.status=ntohl(Oripkt->event.status);
+-	Oripkt->event.reason=ntohl(Oripkt->event.reason);
+-	Oripkt->event.auth_type=ntohl(Oripkt->event.auth_type);
+-	Oripkt->event.datalen=ntohl(Oripkt->event.datalen);
+-
+-	return;
+-}
+ 
+ void bsa_peer_netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+@@ -346,12 +356,135 @@
+ 	int sock_len = sizeof(struct sockaddr_in);
+ 	int bytes;
+ 	struct sockaddr_in fromdriv;
+-	bcm_event_t *dpkt;
++	unsigned char sta_mac[18];
++	uint8 bssid[ETHER_ADDR_LEN];
++	bcm_event_t *drv_msg;
++	wl_event_msg_t *wlem;
++	struct bsa_drv_probe_event_info probe_event;
++	struct ChSpec chanspec;
++	struct wl_event_rx_frame_data *werxfd;
++	struct bsa_drv_connect_compl_event_info connect_event;
++	struct bsa_evt_sta_disconnect_event_data sta_disconnect_event;
++	struct zy_sta_info_t sta_info;
++
++	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv, (socklen_t *)&sock_len);
++	drv_msg = (bcm_event_t *)pkt;
++	wlem = &(drv_msg->event);
++
++	zyBsaPeerParseNetLink(wlem);
++
++	/* change endian */
++	wlem->version = ntohs(wlem->version);
++	wlem->flags = ntohs(wlem->flags);
++	wlem->event_type = ntohl(wlem->event_type);
++	wlem->status = ntohl(wlem->status);
++	wlem->reason = ntohl(wlem->reason);
++	wlem->auth_type = ntohl(wlem->auth_type);
++	wlem->datalen = ntohl(wlem->datalen);
++
++	zyWifiGetIfHwAddr(wlem->ifname, bssid);
++
++	switch (wlem->event_type) {
++        case WLC_E_PROBREQ_MSG_RX:
++			memcpy(&probe_event.sta_mac, wlem->addr.octet, ETH_ALEN);
++			probe_event.curr_band = BSA_OPER_BAND_2G;
++
++			werxfd = (struct wl_event_rx_frame_data *)((bcm_event_t *)pkt + 1);
++			probe_event.rssi = werxfd->rssi;
++			probe_event.channel = werxfd->channel;
++#if 0 //soniq
++			probe_event.max_phy_rate = werxfd->rate;
++			probe_event.rss = ??;
++			probe_event.band_width = ??;
++			probe_event.bss_transition = ??;
++#else
++			probe_event.max_phy_rate = werxfd->rate;
++			probe_event.rss = 1;
++			probe_event.band_width = 1;
++			probe_event.bss_transition = 0;
++#endif
++			if (probe_event.curr_band == BSA_OPER_BAND_2G) {
++				probe_event.vht_capab = 0;
++				probe_event.mu_mimo_capab = 0;
++			}
++			else {
++				/* VHT Cap IE exist */
++				//probe_event.vht_capab = (ModifiedMe_VHT_Cap_IE);
++				/* VHT Cap bit19 (MU beamformer) & bit20 (MU beamformee) */
++				//probe_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
++			}
+ 
+-	bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
+-	dpkt = (bcm_event_t *)pkt;
+-	zyChangeEndian(dpkt);
+-	zybsa_peer_drv_events_handler(dpkt, dpkt->event.event_type, bsa_peer);
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, bssid,
++											(uint8_t *)&probe_event, sizeof(struct bsa_drv_probe_event_info));
++			break;
++		case WLC_E_ASSOC_IND:
++			memcpy(&connect_event.sta_mac, wlem->addr.octet, ETH_ALEN);
++			zyget_sta_info(wlem->ifname, connect_event.sta_mac, &sta_info, 'b');
++			connect_event.max_phy_rate = sta_info.max_phy_rate;
++			connect_event.curr_band = BSA_OPER_BAND_2G;
++			zyWlanGetCurrentChannelInfo(wlem->ifname, &chanspec);
++			connect_event.channel = chanspec.channel;
++
++			if (connect_event.curr_band == BSA_OPER_BAND_2G) {
++				connect_event.vht_capab = 0;
++				connect_event.mu_mimo_capab = 0;
++			}
++			else {
++				/* VHT Cap IE exist */
++				//connect_event.vht_capab = (ModifiedMe_VHT_Cap_IE);
++				/* VHT Cap bit19 (MU beamformer) & bit20 (MU beamformee) */
++				//connect_event.mu_mimo_capab = (ModifiedMe_VHT_Cap >> 19) & 0x3;
++			}
++#if 0 //soniq
++			connect_event.rss = ?;
++			connect_event.band_width = ?;
++			connect_event.bss_transition_support = ?;
++#else
++			connect_event.rss = 1;
++			connect_event.band_width = 1;
++			connect_event.bss_transition_support = 0;
++#endif
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, bssid,
++											(uint8_t *)&connect_event, sizeof(struct bsa_drv_connect_compl_event_info));
++			break;
++        case WLC_E_DEAUTH:
++        case WLC_E_DISASSOC_IND:
++			memcpy(&sta_disconnect_event.sta_mac, wlem->addr.octet, ETH_ALEN);
++#if 0 //soniq
++			sta_disconnect_event.direction = ?;
++#else
++			sta_disconnect_event.direction = 1;
++#endif
++			sta_disconnect_event.reason_code = (uint16_t)drv_msg->event.reason;
++
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, bssid,
++											(uint8_t *)&sta_disconnect_event, sizeof(struct bsa_evt_sta_disconnect_event_data));
++			/* PeterSu: struct bsa_evt_sta_disconnect_event_data should be driver (drv) related, not event (evt) related */
++			break;
++        case WLC_E_REASON_BSSTRANS_REQ:
++			break;
++        default:
++			if (BSA_DEBUG < bsa_debug_level) {
++				;
++			}
++			else {
++				printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, wlem->event_type);
++				printf("\033[0;32;34m [KAREN TEST %s:%d version=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->version));
++				printf("\033[0;32;34m [KAREN TEST %s:%d flags=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->flags));
++				printf("\033[0;32;34m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->event_type));
++				printf("\033[0;32;34m [KAREN TEST %s:%d status=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->status));
++				printf("\033[0;32;34m [KAREN TEST %s:%d reason=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->reason));
++				printf("\033[0;32;34m [KAREN TEST %s:%d auth_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->auth_type));
++				printf("\033[0;32;34m [KAREN TEST %s:%d datalen=%d] \033[0m \n", __FUNCTION__, __LINE__, (wlem->datalen));
++				printf("\033[0;32;34m [KAREN TEST %s:%d ifname=%s] \033[0m \n", __FUNCTION__, __LINE__, (wlem->ifname));
++				printf("\033[0;32;34m [KAREN TEST %s:%d ifidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (wlem->ifidx));
++				printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (wlem->bsscfgidx));
++				zyWifiGetSTAAddr(sta_mac, wlem->addr.octet);
++				printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
++				printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
++			}
++			break;
++	}
+ 
+ 	return;
+ }
+@@ -379,8 +512,11 @@
+ struct bsa_netlink_data * bsa_peer_netlink_create(struct bsa_netlink_config *cfg)
+ {
+ 	struct bsa_netlink_data *netlink;
++#if 1 //Zyxel
+ 	struct sockaddr_nl read_local2, write_local;
+-	//struct sockaddr_nl read_local1;
++#else
++	struct sockaddr_nl read_local1, read_local2, write_local;
++#endif
+ 	netlink = (struct bsa_netlink_data *)malloc(sizeof(struct bsa_netlink_data));
+ 	if (netlink == NULL) {
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: allocation for netlink structures failed");
+@@ -389,16 +525,19 @@
+ 
+ 	netlink->cfg = cfg;
+ 
+-	/*init brcm_drv_read_socket*/
++	/*init read socket*/
++#if 1 //Zyxel
+ 	bsa_drv_read_sock_init(&netlink->drv_read_sock);
+-	//netlink->drv_read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
++#else
++	netlink->drv_read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
++#endif
+ 	if (netlink->drv_read_sock < 0) {
+ 		bsa_printf(BSA_WARN, "BSA_PEER: Failed to open netlink socket: %s",
+ 				strerror(errno));
+ 		bsa_peer_netlink_deinit(netlink);
+ 		return NULL;
+ 	}
+-	/*
++#if 0 //Zyxel
+ 	memset(&read_local1, 0, sizeof(read_local1));
+ 	read_local1.nl_family = AF_NETLINK;
+ 	read_local1.nl_groups = RTMGRP_LINK;
+@@ -409,7 +548,8 @@
+ 				strerror(errno));
+ 		bsa_peer_netlink_deinit(netlink);
+ 		return NULL;
+-	}*/
++	}
++#endif
+ 
+ 	/*init app read socket */
+ 	netlink->read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+@@ -584,20 +724,20 @@
+ 	case BSA_EVENT_PROBE_REQ:
+ 		probe_event = (void *)(drv_event);
+ 		msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+-		event_buffer->event_id = BSA_EVENT_PROBE_REQ;
++		event_buffer->event_id = htole16(BSA_EVENT_PROBE_REQ);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: probe bssid="MACSTR"", MAC2STR(bssid));
+ 		event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
+ 		preq_info = (void *)&event_buffer->payload;
+ 		memcpy(preq_info->sta_mac, probe_event->sta_mac, ETH_ALEN);
+-		preq_info->rssi = probe_event->rssi - BSA_RSSI_CORRECTION;
+-		preq_info->rx_ss_info = probe_event->rss;
+-		preq_info->max_phy_rate = probe_event->max_phy_rate;
++		preq_info->rssi = htole32(probe_event->rssi - BSA_RSSI_CORRECTION);
++		preq_info->rx_ss_info = htole16(probe_event->rss);
++		preq_info->max_phy_rate = htole16(probe_event->max_phy_rate);
+ 		bsa_get_reltime(&time);
+-		preq_info->tstamp = time.sec;
+-		preq_info->curr_band = probe_event->curr_band;
+-		preq_info->channel = probe_event->channel;
++		preq_info->tstamp = htole64(time.sec);
++		preq_info->curr_band = htole16(probe_event->curr_band);
++		preq_info->channel = htole16(probe_event->channel);
+ 		preq_info->sta_capab = probe_event->band_width;
+ 		preq_info->sta_capab |= ((probe_event->vht_capab & 0x1)?0x10:0);
+ 		preq_info->sta_capab |= ((probe_event->vht_capab & 0x2)?0x80:0);
+@@ -711,14 +851,14 @@
+ 	case BSA_EVENT_DISASSOC:
+ 		sta_disconnect_event = (void *)(drv_event);
+ 		msg_len = STA_DISCONNECT_INFO_LEN;
+-		event_buffer->event_id = BSA_EVENT_DISASSOC;
++		event_buffer->event_id = htole16(BSA_EVENT_DISASSOC);
+ 		event_buffer->api_ver = BSA_PEER_API_VERSION;
+ 		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
+ 		event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
+ 		sta_disconnect_info = (void*)&event_buffer->payload;
+ 		memcpy(sta_disconnect_info->sta_mac, sta_disconnect_event->sta_mac, ETH_ALEN);
+ 		sta_disconnect_info->direction = sta_disconnect_event->direction;
+-		sta_disconnect_info->reason_code = sta_disconnect_event->reason_code;
++		sta_disconnect_info->reason_code = htole16(sta_disconnect_event->reason_code);
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
+ 				MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
+ 				sta_disconnect_info->direction, sta_disconnect_info->reason_code);
+@@ -894,6 +1034,46 @@
+ 	if(strncmp(custom, "BSA-PEER-EVENT",15) == 0) {
+ 		bsa_peer_sub_events_handler(bsa_peer, custom, length);
+ 	} 
++	#if 0
++	else {
++		char store_info[STOR_INFO_LEN];
++		char *sear_string = NULL, *temp_str = NULL;
++		uint8_t  event_buff[BSA_MAX_EVENT_LEN];
++		struct bsa_evt_sta_disconnect_event_data *sta_disconnect_event;
++		struct bsa_drv_peer_event_data *p_data = (void *)custom;
++
++		memset(store_info, 0, STOR_INFO_LEN);
++		memset(event_buff, 0, BSA_MAX_EVENT_LEN);
++		sta_disconnect_event = (void *)event_buff;
++
++		if ((strstr(custom, "Client disconnected") != NULL) ||
++			(strstr(custom, "Client authentication failed") != NULL)) {
++			sear_string = strtok_r(custom, "[", &temp_str);
++			sscanf(temp_str,"%20[^]]", store_info);
++			ether_aton_r(store_info, (struct ether_addr *)sta_disconnect_event->sta_mac);
++			memset(&store_info, 0, sizeof(store_info));
++			sear_string = strtok_r(NULL, "-", &temp_str);
++			sscanf(temp_str,"%2[^-]", store_info);
++			sta_disconnect_event->reason_code = atoi(store_info);
++			sta_disconnect_event->direction = BSA_DISCONNECT_PEER_GENERATED;
++
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, p_data->bssid, (void *)event_buff,
++						sizeof(struct bsa_evt_sta_disconnect_event_data));
++
++		} else if ((strstr(custom, "Client removed") != NULL)) {
++			sear_string = strtok_r(custom, "[", &temp_str);
++			sscanf(temp_str, "%20[^]]", store_info);
++			ether_aton_r(store_info, (struct ether_addr *)sta_disconnect_event->sta_mac);
++			memset(&store_info, 0, sizeof(store_info));
++			sear_string = strtok_r(NULL, "-", &temp_str);
++			sscanf(temp_str,"%2[^-]", store_info);
++			sta_disconnect_event->reason_code = atoi(store_info);
++			sta_disconnect_event->direction = BSA_DISCONNECT_SELF_GENERATED;
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, p_data->bssid,(void *) event_buff,
++						sizeof(struct bsa_evt_sta_disconnect_event_data));
++		}
++	}
++#endif
+ }
+ 
+ void bsa_peer_events(struct bsa_peer_entity  *bsa_peer, char *data, int len)
+@@ -942,6 +1122,122 @@
+ 	}
+ }
+ 
++void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len)
++{
++	struct bsa_peer_entity  *bsa_peer  = ctx;
++	char ifname[IFNAMSIZ + 1] = {0};
++	int index;
++	if_indextoname(ifi->ifi_index, ifname);
++	index = get_bsa_conf_info_by_name(ifname);
++	if (index >=0) {
++		struct bsa_drv_intf_status *drv_intf_status = (struct bsa_drv_intf_status *)calloc(1, BSA_EVENT_BUFF_SIZE);
++		if (drv_intf_status) {
++			strncpy((char *)drv_intf_status->ifname, ifname, IFNAMSIZ);
++			drv_intf_status->ifname_size = strlen((char *)drv_intf_status->ifname);
++			drv_intf_status->status = BSA_INTF_STATE_DELETED;		
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_STATUS, bsa_conf_info[index].bssid,
++					(uint8_t *)drv_intf_status, sizeof(struct bsa_drv_intf_status));		
++			free(drv_intf_status);
++		}
++		bsa_conf_info[index].status = 0;
++	}
++}
++
++void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len)
++{
++	struct bsa_peer_entity  *bsa_peer  = ctx;
++	struct bsa_drv_intf_status *drv_intf_status = NULL;
++	struct ifreq ifr;
++	int attrlen, rta_len;
++	struct rtattr *attr;
++	char ifname[IFNAMSIZ + 1] = {0};
++	char *event_buff = NULL;
++	uint8_t bssid[ETH_ALEN];
++	int index;
++	attrlen = len;
++	attr = (struct rtattr *) buf;
++	rta_len = RTA_ALIGN(sizeof(struct rtattr));
++
++	while (RTA_OK(attr, attrlen)) {
++		switch(attr->rta_type) {
++		case  IFLA_WIRELESS:
++			bsa_peer_events(bsa_peer, ((char *) attr) + rta_len,
++							attr->rta_len -	rta_len);
++			break;
++#if 0
++		case IFLA_OPERSTATE:
++			pos = extra;
++			nla = (struct nlattr *) attr;
++
++			memcpy(extra, RTA_DATA(attr), RTA_PAYLOAD(attr));
++			ifname[RTA_PAYLOAD(attr)] = '\0';
++			pos += snprintf(pos, end - pos, " operstate=%u",
++					RTA_DATA((struct rtattr *)attr));
++			break;
++#endif
++		case IFLA_LINKMODE:
++			memset(&ifr, 0, sizeof(struct ifreq));
++			memset(bssid, 0, ETH_ALEN);
++
++			event_buff = (char *)calloc(1, BSA_EVENT_BUFF_SIZE);
++
++			if (!event_buff) {
++				return;
++			}
++
++			if_indextoname(ifi->ifi_index, ifname);
++			drv_intf_status = (void*)event_buff;
++			strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
++
++			if ((ioctl(bsa_peer->ioctl_sock, SIOCGIFINDEX, &ifr) == 0) &&
++				(ioctl(bsa_peer->ioctl_sock, SIOCGIFHWADDR, &ifr) == 0)) {
++				memcpy(bssid, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
++			}
++			index = get_bsa_conf_info_by_name(ifname);
++
++			/* only track interested interface */
++			if (index<0) 
++				goto bail;
++			if ((ifi->ifi_flags & IFF_UP) || (ifi->ifi_flags & IFF_RUNNING)) {
++				drv_intf_status->status = BSA_INTF_STATUS_UP;
++				if (index >=0) {
++					if (memcmp(bsa_conf_info[index].bssid, bssid, ETH_ALEN)) {
++						memcpy(bsa_conf_info[index].bssid, bssid, ETH_ALEN);
++					}
++					if (bsa_conf_info[index].bsa_peer_driver_cb){
++						int error; 
++						if  (bsa_conf_info[index].bsa_peer_driver_cb->get_intf_info) {
++							error = bsa_conf_info[index].bsa_peer_driver_cb->get_intf_info
++								(bsa_peer, index, BSA_INTF_INFO_GEN_CMD);
++						}
++						if (bsa_conf_info[index].bsa_peer_driver_cb->set_bsa_status) {
++							error = bsa_conf_info[index].bsa_peer_driver_cb->set_bsa_status
++								(bsa_peer, index, ENABLE_BSA);
++						}
++						bsa_conf_info[index].status = 1;
++
++					}
++				}
++			} else {
++				if (index>=0)
++					bsa_conf_info[index].status = 0;
++				drv_intf_status->status = BSA_INTF_STATUS_DOWN;
++			}
++
++			strncpy((char *)drv_intf_status->ifname, ifname, IFNAMSIZ);
++			drv_intf_status->ifname_size = strlen((char *)drv_intf_status->ifname);
++
++			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_INTF_STATUS, bssid,
++						(uint8_t *)event_buff, sizeof(struct bsa_drv_intf_status));
++bail:
++			free(event_buff);
++			break;
++
++		}
++			attr = RTA_NEXT(attr, attrlen);
++	}
++}
++
+ int bsa_peer_event_init()
+ {
+ 	struct bsa_netlink_config *cfg;
+@@ -958,6 +1254,8 @@
+ 	}
+ 
+ 	cfg->ctx = bsa_peer;
++	cfg->newlink_cb = bsa_peer_event_rtm_newlink;
++	cfg->dellink_cb = bsa_peer_event_rtm_dellink;
+ 	bsa_peer->netlink = bsa_peer_netlink_create(cfg);
+ 	bsa_peer->ioctl_sock = socket(PF_INET, SOCK_DGRAM, 0);
+ 
+@@ -970,7 +1268,6 @@
+ 		return -ENOMEM;
+ 	}
+ 
+-
+ 	bsa_peer_wait_for_event(bsa_peer);
+ 	close(bsa_peer->ioctl_sock);
+ 
+@@ -987,87 +1284,77 @@
+ 	bsa_peer->netlink = NULL;
+ }
+ 
++#if 1 //Zyxel
+ void bsa_drv_read_sock_init(int* drv_evt_sock) {
+-	/*brcm event socket----below*/
+ 	struct sockaddr_in fromdriv;
+ 	int evt_sock, reuse = 1, err=0;
+ 
+ 	memset(&fromdriv, 0, sizeof(fromdriv));
+-	/* Prepare connect struct */
+ 	fromdriv.sin_family = AF_INET;
+-	fromdriv.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //htonl(INADDR_LOOPBACK);
++	fromdriv.sin_addr.s_addr = htonl(INADDR_LOOPBACK); 
+ 	fromdriv.sin_port = htons(EAPD_WKSP_MEVENT_UDP_SPORT);
+ 
+-	/* Create socket */
+ 	reuse=1;
+-	if (( evt_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+-		//WPRINT(W_ERROR, "Unable to create socket.\n");
++	if ((evt_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
++		bsa_printf(BSA_ERROR, "Unable to create socket.\n");
+ 		err = -1;
+ 	}
+-	else if ( (err = setsockopt(evt_sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse))) < 0) {
+-		//WPRINT(W_ERROR, "Unable to setsockopt to loopback socket %d.\n", evt_sock);
++	else if ((err = setsockopt(evt_sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse))) < 0) {
++		bsa_printf(BSA_ERROR, "Unable to setsockopt to loopback socket %d.\n", evt_sock);
+ 	}
+-	else if ( (err = bind(evt_sock, (struct sockaddr *)&fromdriv, sizeof(struct sockaddr))) < 0) {
+-		//WPRINT(W_ERROR, "Unable to bind to loopback socket %d.\n", evt_sock);
++	else if ((err = bind(evt_sock, (struct sockaddr *)&fromdriv, sizeof(struct sockaddr))) < 0) {
++		bsa_printf(BSA_ERROR, "Unable to bind to loopback socket %d.\n", evt_sock);
+ 	}
+ 
+-	if ( err < 0) {
+-		//WPRINT(W_ERROR, "Failure. Close socket.\n");
++	if (err < 0) {
++		bsa_printf(BSA_ERROR, "Failure. Close socket.\n");
+ 		if(evt_sock >= 0) {
+ 			close(evt_sock);
+-			printf("\033[0;32m [Failure. Close socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++			bsa_printf(BSA_ERROR, "Failure. Close socket.    %s:%d\n", __FUNCTION__, __LINE__);
+ 		}
+ 	}
+-	if(evt_sock<0) {
+-		//WPRINT(W_ERROR, "Create drv_evt_sock fail.\n");
+-	}
+ 	*drv_evt_sock = evt_sock;
+ 
+ 	return;
+ }
+ 
+-void zybsa_peer_drv_events_handler(bcm_event_t *drv_msg, int drv_event, struct bsa_peer_entity *bsa_peer){
+-	char macAddr[18];
+-	unsigned char sta_mac[18];
+-	uint8 bssid[ETHER_ADDR_LEN];
++void zyBsaPeerParseNetLink(wl_event_msg_t *wlem)
++{
++	int i, j = 0;
++	uint8 *d, *p;
++	char ch;
++	signed char buf[32];
+ 
+-    /* Send brcm eventsfrom bsa_peer to app*/
+-    /*struct bsa_drv_peer_event_data *pdata;
+-    */
++	if (BSA_DEBUG < bsa_debug_level) {
++		return;
++	}
+ 
+-	switch(drv_event){
+-        case WLC_E_PROBREQ_MSG_RX:
+-			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, drv_msg);
+-			break;
+-		case WLC_E_ASSOC_IND:
+-			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, drv_msg);
+-			break;
+-        case WLC_E_DEAUTH:
+-        case WLC_E_DISASSOC_IND:
+-			zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, drv_msg);
+-			break;
+-        case WLC_E_REASON_BSSTRANS_REQ:
+-			break;
+-        default:
+-#if 0 //Peter
+-			zyWifiGetIfHwAddr(drv_msg->event.ifname, bssid);
+-			zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
+-			printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
+-			printf("\033[0;32;34m [KAREN TEST %s:%d version=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.version));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d flags=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.flags));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.event_type));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d status=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.status));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d reason=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.reason));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d auth_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.auth_type));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d datalen=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.datalen));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d ifname=%s] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifname));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d ifidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifidx));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.bsscfgidx));
+-			printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
+-			printf("\033[0;32;34m [KAREN TEST %s:%d macAddr="MACSTR"] \033[0m \n", __FUNCTION__, __LINE__, MAC2STR(bssid));
+-#endif
+-			break;
++	p = wlem->addr.octet;
++	d = (uint8 *)(wlem + 1);
++
++	printf("\n\n\n============ %s ============\n", __FUNCTION__);
++	printf("wlem->version=%d, wlem->flags=0x%x, wlem->event_type=%d, wlem->status=%d, wlem->reason=%d, wlem->auth_type=%d, wlem->datalen=%d\n",
++			wlem->version, wlem->flags, wlem->event_type, wlem->status, wlem->reason, wlem->auth_type, wlem->datalen);
++	printf("wlem->addr=%02x:%02x:%02x:%02x:%02x:%02x, wlem->ifname=%s, wlem->ifidx=%d, wlem->bsscfgidx=%d \n",
++			p[0], p[1], p[2], p[3], p[4], p[5], wlem->ifname, wlem->ifidx, wlem->bsscfgidx);
++	for (i = 0 ; i < wlem->datalen ; i++) {
++		printf("%02X", *(d+i));
++		if (i % 8 == 7) {
++			printf("  ");
++		}
++		buf[j++] = *(d+i);
++		if (i % 16 == 15) {
++			buf[j] = '\0';
++			printf("		");
++			for (j = 0 ; j < 16 ; j++) {
++				ch = buf[j];
++				printf("%c", (ch >= ' ' && ch <= '~')?(ch):('.'));
++			}
++			printf("\n");
++			j = 0;
++		}
+ 	}
++	printf("\n============ %s ============\n\n\n", __FUNCTION__);
+ 	return;
+ }
+ 
+@@ -1255,7 +1542,7 @@
+ 	FILE *fp = NULL;
+ 
+ 	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	zybsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++	bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	do {
+ 		sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
+@@ -1295,7 +1582,7 @@
+ 	memset(rate_set, 0, sizeof(rate_set));
+ 	memset(mcs_set, 0, sizeof(mcs_set));
+ 	sprintf(macAddr,""MACSTR"",MAC2STR(mac));
+-	zybsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
++	bsa_printf(BSA_DEBUG, "[%s] ifname=%s mac=%s \n", __FUNCTION__, ifname, macAddr);
+ 
+ 	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
+ 
+@@ -1434,9 +1721,9 @@
+ 	//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta->standard, sta->authState, sta->rssi, sta->bandwidth, sta->rx_ss_info, sta->max_phy_rate);
+ 	return 0;
+ }
++#endif
+ 
+-
+-
++#if 0
+ int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id,	bcm_event_t *drv_msg)
+ {
+     struct bsa_netlink_data *netlink = bsa_peer->netlink;
+@@ -1482,7 +1769,7 @@
+ 
+ 	switch (event_id) {
+ 		case BSA_EVENT_PROBE_REQ:
+-			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_PROBE_REQ**  ] \033[0m \n", __FUNCTION__, __LINE__);
+ 
+ 			//probe_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
+@@ -1515,7 +1802,7 @@
+ 				preq_info->sta_capab |= BIT(4);
+ 			break;
+ 		case BSA_EVENT_CONNECT_COMPLETE:
+-			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
+ 
+ 			//connect_event = (void *)(drv_event);
+ 			msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
+@@ -1557,7 +1844,7 @@
+ 					connect_info->channel, connect_info->curr_band);*/
+ 			break;
+ 		case BSA_EVENT_DISASSOC:
+-			zybsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
++			bsa_printf(BSA_INFO, "\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_DISASSOC**  ] \033[0m \n", __FUNCTION__, __LINE__);
+ 
+ 			//sta_disconnect_event = (void *)(drv_event);
+ 			msg_len = STA_DISCONNECT_INFO_LEN;
+@@ -1623,5 +1910,5 @@
+ 
+ 	return 0;
+ }
+-
++#endif
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_conf.txt
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_conf.txt	2017-04-16 08:42:30.414495880 +0800
++++ bsa-1.0.1/bsa_peer/bsa_conf.txt	2017-04-16 08:42:30.458495630 +0800
+@@ -1 +1,2 @@
+ 2g_band_interface=wl0
++bsa_debug_level=1
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-04-16 08:42:30.430495788 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-04-16 08:42:30.458495630 +0800
+@@ -13,9 +13,15 @@
+ #include "bsa_includes.h"
+ #include "bsa_common_defs.h"
+ #include "bsa_driver.h"
++#if 1 //Zyxel
+ #include "bsa_driver_brcm.h"
++#else
++#include "bsa_driver_qtn.h"
++#endif
+ #include "bsa_peer_entity.h"
+ #include "bsa_wireless_copy.h"
++
++#if 1 //Zyxel
+ /* BRCM SOCKET */
+ #include <sys/stat.h>
+ #include <sys/types.h>
+@@ -37,6 +43,7 @@
+ 	void *data;					/* used to hang additional data on an event */
+ 	struct wlc_event *next;
+ }  bcm_dri_event_t;
++#endif
+ 
+ #define BSA_RSSI_CORRECTION	90
+ #define BSA_PEER_MAX_MSG_LEN	2048
+@@ -56,19 +63,23 @@
+ #define BSA_MAX_EVENT_LEN 4096
+ #define STOR_INFO_LEN	19
+ 
++#if 1 //Zyxel
+ #define EAPD_WKSP_SPORT_OFFSET		(1 << 5)
+ #define EAPD_WKSP_MEVENT_UDP_PORT       44000
+ #define EAPD_WKSP_MEVENT_UDP_SPORT      EAPD_WKSP_MEVENT_UDP_PORT + EAPD_WKSP_SPORT_OFFSET
+ #define ETHER_ADDR_LEN 6
++#endif
+ 
+-//void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
+-//void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
++void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
++void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
+ void bsa_peer_events(struct bsa_peer_entity  *bsa_peer, char *data, int len);
+ int bsa_peer_event_init();
+ void bsa_peer_deinit(void *priv);
+ void netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx);
+ int bsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id, uint8_t *bssid,
+ 					uint8_t *msg_data, int length);
++
++#if 1 //Zyxel
+ void bsa_drv_read_sock_init(int* drv_evt_sock);
+ void zybsa_peer_drv_events_handler(bcm_event_t * msg, int drv_event, struct bsa_peer_entity *bsa_peer);
+ zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
+@@ -80,7 +91,7 @@
+ int zygetAntennaNum(char *mcs);
+ void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta);
+ int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type);
+-
++#endif
+ 
+ 
+ #endif
+Index: bsa-1.0.1/common/bsa_debug.c
+===================================================================
+--- bsa-1.0.1.orig/common/bsa_debug.c	2017-04-16 08:42:30.442495721 +0800
++++ bsa-1.0.1/common/bsa_debug.c	2017-04-16 08:42:30.462495608 +0800
+@@ -45,19 +45,6 @@
+ #include "bsa_includes.h"
+ 
+ int bsa_debug_level;
+-void zybsa_printf(int level, const char *fmt, ...)
+-{
+-	va_list ap;
+-
+-	if (level < bsa_debug_level)
+-		return;
+-
+-	va_start(ap, fmt);
+-	vfprintf(stdout, fmt, ap);
+-	va_end(ap);
+-	return;
+-}
+-
+ void bsa_printf(int level, const char *fmt, ...)
+ {
+ 	FILE *log_file;
+Index: bsa-1.0.1/bsa_peer/bsa_driver.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_driver.h	2017-04-16 08:42:30.414495880 +0800
++++ bsa-1.0.1/bsa_peer/bsa_driver.h	2017-04-16 08:42:30.462495608 +0800
+@@ -50,7 +50,9 @@
+ 
+ enum vendor_id_num {
+ 	BSA_VENDOR_ID_QTN_PEARL = 0x0001,
++#if 1 //Zyxel
+ 	BSA_VENDOR_ID_BRCM_PEARL = 0x0002,
++#endif
+ };
+ 
+ enum {
+@@ -74,7 +76,9 @@
+ 	int (*stop_monitor)(void *priv, int index);
+ 	int (*get_associated_clients)(void *priv, int index);
+ 	int (*send_btm_req)(void *priv, int index, void *cmd_info);
++#if 1 //Zyxel
+ 	int (*start_fat_monitor)(void *priv, int index, uint8_t ifname[], uint32_t fat_period);
++#endif
+ };
+ 
+ 
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.c	2017-04-16 08:42:30.446495699 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.c	2017-04-16 08:42:45.986407965 +0800
+@@ -51,7 +51,11 @@
+ #endif
+ 
+ extern int bsa_debug_level;
++#if 1 //Zyxel
+ extern const struct bsa_driver_ops bsa_driver_brcm_ops;
++#else
++extern const struct bsa_driver_ops bsa_driver_qtn_ops;
++#endif
+ struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ uint16_t vap_count;
+ 
+@@ -59,13 +63,16 @@
+ {
+ 	FILE *fd = NULL;
+ 	int retval = 0;
+-	char buff[BUFF_SIZE], tmpbuf[32];
++	char buff[BUFF_SIZE];
++#if 1 //Zyxel
++	char tmpbuf[32];
++#endif
+ 	char *tempVal = NULL, *store_val= NULL;
+ 	int i = 0, sockid = -1, len = 0;
+ 	struct ifreq ifr;
+ 	int debug_level = 0;
+ 
+-#if 1 //Peter
++#if 1 //Zyxel
+ 	if (access(BSA_CONF_FILE_RUNTIME_PATH, F_OK) == -1) {
+ 		sprintf(tmpbuf, "cp %s %s", BSA_CONF_FILE_PATH, BSA_CONF_FILE_RUNTIME_PATH);
+ 		system(tmpbuf);
+@@ -102,7 +109,11 @@
+ 							ETH_ALEN);
+ 
+ 				}
++#if 1 //Zyxel
+ 				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_brcm_ops;
++#else
++				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_qtn_ops;
++#endif
+ 				i++;
+ 				vap_count++;
+ 
+@@ -118,7 +129,9 @@
+ 					memcpy(bsa_conf_info[i].bssid, ifr.ifr_hwaddr.sa_data,
+ 							ETH_ALEN);
+ 				}
+-#if 0
++#if 1 //Zyxel
++				//TODO
++#else
+ 				bsa_conf_info[i].bsa_peer_driver_cb = &bsa_driver_qtn_ops;
+ #endif
+ 				i++;
+Index: bsa-1.0.1/bsa_peer/bsa_peer_entity.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_entity.h	2017-04-16 08:42:30.446495699 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_entity.h	2017-04-16 08:42:30.462495608 +0800
+@@ -54,8 +54,12 @@
+ #define INTERFACE_5G	"5g_band_interface"
+ #define BSA_PEER_DEBUG_LEVEL	"bsa_debug_level"
+ #define BSA_PEER_MAX_INTF_COUNT	8
++#if 1 //Zyxel
+ #define BSA_CONF_FILE_PATH	"/etc/bsa_conf.txt"
+ #define BSA_CONF_FILE_RUNTIME_PATH	"/tmp/bsa_conf.txt"
++#else
++#define BSA_CONF_FILE_PATH	"/mnt/jffs2/bsa_conf.txt"
++#endif
+ #define BUFF_SIZE		100
+ 
+ struct bsa_peer_bssid_list {
+Index: bsa-1.0.1/include/bsa_common_defs.h
+===================================================================
+--- bsa-1.0.1.orig/include/bsa_common_defs.h	2017-04-16 08:42:30.414495880 +0800
++++ bsa-1.0.1/include/bsa_common_defs.h	2017-04-16 08:49:18.940187526 +0800
+@@ -278,7 +278,9 @@
+ 	BSA_CMD_STA_MAC_FILTER	= 0x0006,
+ 	BSA_CMD_GET_STA_STATS = 0x0007,
+ 	BSA_CMD_BSS_TRANS_REQ   = 0x0008,
++#if 1 //Zyxel
+ 	BSA_CMD_START_FAT_MONITORING   = 0x0009,
++#endif
+ 	BSA_CMD_MONITOR_START = 0x000a,
+ 	BSA_CMD_MONITOR_STOP = 0X000b,
+ 	BSA_CMD_GET_NONASSOC_STATS = 0x000c,

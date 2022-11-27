@@ -1,0 +1,109 @@
+Index: linux-2.6.36/drivers/char/tty_io.c
+===================================================================
+--- linux-2.6.36.orig/drivers/char/tty_io.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/char/tty_io.c	2017-04-27 17:00:52.568819238 +0800
+@@ -553,6 +553,9 @@
+ 
+ 	tty_lock();
+ 
++	/* some functions below drop BTM, so we need this bit */
++	set_bit(TTY_HUPPING, &tty->flags);
++
+ 	/* inuse_filps is protected by the single tty lock,
+ 	   this really needs to change if we want to flush the
+ 	   workqueue with the lock held */
+@@ -572,6 +575,10 @@
+ 	}
+ 	spin_unlock(&tty_files_lock);
+ 
++	/*
++	* it drops BTM and thus races with reopen
++	* we protect the race by TTY_HUPPING
++	*/
+ 	tty_ldisc_hangup(tty);
+ 
+ 	read_lock(&tasklist_lock);
+@@ -609,7 +616,7 @@
+ 	tty->session = NULL;
+ 	tty->pgrp = NULL;
+ 	tty->ctrl_status = 0;
+-	set_bit(TTY_HUPPED, &tty->flags);
++	//set_bit(TTY_HUPPED, &tty->flags);
+ 	spin_unlock_irqrestore(&tty->ctrl_lock, flags);
+ 
+ 	/* Account for the p->signal references we killed */
+@@ -635,6 +642,7 @@
+ 	 * can't yet guarantee all that.
+ 	 */
+ 	set_bit(TTY_HUPPED, &tty->flags);
++	clear_bit(TTY_HUPPING, &tty->flags);
+ 	tty_ldisc_enable(tty);
+ 
+ 	tty_unlock();
+@@ -1304,7 +1312,9 @@
+ {
+ 	struct tty_driver *driver = tty->driver;
+ 
+-	if (test_bit(TTY_CLOSING, &tty->flags))
++	if (test_bit(TTY_CLOSING, &tty->flags) ||
++		test_bit(TTY_HUPPING, &tty->flags) ||
++		test_bit(TTY_LDISC_CHANGING, &tty->flags))
+ 		return -EIO;
+ 
+ 	if (driver->type == TTY_DRIVER_TYPE_PTY &&
+Index: linux-2.6.36/drivers/char/tty_ldisc.c
+===================================================================
+--- linux-2.6.36.orig/drivers/char/tty_ldisc.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/char/tty_ldisc.c	2017-04-27 17:00:52.600819238 +0800
+@@ -636,7 +636,7 @@
+ 
+ 	tty_lock();
+ 	mutex_lock(&tty->ldisc_mutex);
+-	if (test_bit(TTY_HUPPED, &tty->flags)) {
++	if (test_bit(TTY_HUPPING, &tty->flags)) {
+ 		/* We were raced by the hangup method. It will have stomped
+ 		   the ldisc data and closed the ldisc down */
+ 		clear_bit(TTY_LDISC_CHANGING, &tty->flags);
+Index: linux-2.6.36/drivers/usb/serial/usb_wwan.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/usb_wwan.c	2017-04-27 16:57:14.844819238 +0800
++++ linux-2.6.36/drivers/usb/serial/usb_wwan.c	2017-04-27 17:00:52.600819238 +0800
+@@ -235,16 +235,18 @@
+ 		    __func__, status, endpoint);
+ 	} else {
+ 		tty = tty_port_tty_get(&port->port);
+-		if (urb->actual_length) {
+-			tty_insert_flip_string(tty, data, urb->actual_length);
+-			tty_flip_buffer_push(tty);
++		if(tty){
++			if (urb->actual_length) {
++				tty_insert_flip_string(tty, data, urb->actual_length);
++				tty_flip_buffer_push(tty);
+ #if defined(TC_SUPPORT_3G) && defined(TR068_LED)
+-			if(Dongle_InternetLed_hook)
+-				Dongle_InternetLed_hook();			
++				if(Dongle_InternetLed_hook)
++					Dongle_InternetLed_hook();
+ #endif
+-		} else
+-			dbg("%s: empty read urb received", __func__);
+-		tty_kref_put(tty);
++			} else
++				dbg("%s: empty read urb received", __func__);
++			tty_kref_put(tty);
++		}
+ 
+ 		/* Resubmit urb so we continue receiving */
+ 		if (status != -ESHUTDOWN) {
+Index: linux-2.6.36/include/linux/tty.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/tty.h	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/include/linux/tty.h	2017-04-27 17:00:52.636819238 +0800
+@@ -365,6 +365,7 @@
+ #define TTY_HUPPED 		18	/* Post driver->hangup() */
+ #define TTY_FLUSHING		19	/* Flushing to ldisc in progress */
+ #define TTY_FLUSHPENDING	20	/* Queued buffer flush pending */
++#define TTY_HUPPING 		21	/* ->hangup() in progress */
+ 
+ #define TTY_WRITE_FLUSH(tty) tty_write_flush((tty))
+ 

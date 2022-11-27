@@ -1,0 +1,22 @@
+Index: libzcfg_fe_dal-1.0/security/parentalControl/zcfg_fe_dal_parentalControl.c
+===================================================================
+--- libzcfg_fe_dal-1.0.orig/security/parentalControl/zcfg_fe_dal_parentalControl.c	2017-07-18 09:38:13.667583942 +0800
++++ libzcfg_fe_dal-1.0/security/parentalControl/zcfg_fe_dal_parentalControl.c	2017-07-18 09:38:52.103583122 +0800
+@@ -185,7 +185,7 @@
+ 			return ret;
+ 		}
+ 			
+-		char temp[20]  = {0};
++		char temp[32]  = {0};
+ 		
+ 		if(ScheduleRuleList[0] == '\0'){
+ 			sprintf(temp, "X_ZYXEL_Schedule.%d", schTimeObjIid.idx[0]);
+@@ -303,7 +303,7 @@
+ 			return ret;
+ 		}
+ 			
+-		char temp[20]  = {0};
++		char temp[32]  = {0};
+ 		if(ScheduleRuleList[0] == '\0'){
+ 			snprintf(temp, sizeof(temp), "X_ZYXEL_Schedule.%d", schTimeObjIid.idx[0]);
+ 		}

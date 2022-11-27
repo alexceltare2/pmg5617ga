@@ -1,0 +1,71 @@
+Index: linux-2.6.36/net/bridge/br_fdb.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_fdb.c	2017-07-12 11:18:05.916793972 +0800
++++ linux-2.6.36/net/bridge/br_fdb.c	2017-07-12 11:51:17.915865100 +0800
+@@ -592,25 +592,25 @@
+ 	return ret;
+ }
+ 
+-__IMEM void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
++__IMEM int br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
+ 		   const unsigned char *addr, struct sk_buff *skb)
+ {
+ 	struct hlist_head *head = &br->hash[br_mac_hash(addr)];
+ 	struct net_bridge_fdb_entry *fdb;
+ 	/* some users want to always flood. */
+ 	if (hold_time(br) == 0)
+-		return;
++		return 0;
+ 
+ 	/* ignore packets unless we are using this port */
+ 	if (!(source->state == BR_STATE_LEARNING ||
+ 	      source->state == BR_STATE_FORWARDING))
+-		return;
++		return 0;
+ 
+ 	fdb = fdb_find(head, addr);
+ 	/* if packets come frome WAN with LAN device MAC, don't update brctl MAC table */
+ 	if(fdb){
+ 		if((!strncmp(fdb->dst->dev->name, "eth", 3) || !strncmp(fdb->dst->dev->name, "ra", 2)) && (!strncmp(source->dev->name, "nas", 3)))
+-			return;
++			return -1;
+ 	}
+ 	if (likely(fdb)) {
+ 		/* attempt to update an entry for a local interface */
+@@ -638,6 +638,8 @@
+ 		 */
+ 		spin_unlock(&br->hash_lock);
+ 	}
++
++	return 0;
+ }
+ EXPORT_SYMBOL(br_fdb_update);
+ 
+Index: linux-2.6.36/net/bridge/br_input.c
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_input.c	2017-07-12 11:18:04.616793989 +0800
++++ linux-2.6.36/net/bridge/br_input.c	2017-07-12 11:53:03.618865100 +0800
+@@ -167,7 +167,9 @@
+ 		goto drop;
+ 	#endif
+ 	
+-	br_fdb_update(br, p, eth_hdr(skb)->h_source, skb);
++	/* if packets come frome WAN with LAN device MAC, drop packets */
++	if (br_fdb_update(br, p, eth_hdr(skb)->h_source, skb))
++	   goto drop;
+ 
+ #if defined(TCSUPPORT_XPON_IGMP)
+ 
+Index: linux-2.6.36/net/bridge/br_private.h
+===================================================================
+--- linux-2.6.36.orig/net/bridge/br_private.h	2017-07-12 11:18:05.172793981 +0800
++++ linux-2.6.36/net/bridge/br_private.h	2017-07-12 13:25:47.904865100 +0800
+@@ -433,7 +433,7 @@
+ extern int br_fdb_insert(struct net_bridge *br,
+ 			 struct net_bridge_port *source,
+ 			 const unsigned char *addr);
+-extern void br_fdb_update(struct net_bridge *br,
++extern int br_fdb_update(struct net_bridge *br,
+ 			  struct net_bridge_port *source,
+ 			  const unsigned char *addr, struct sk_buff *skb);
+ 

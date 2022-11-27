@@ -1,0 +1,40 @@
+Index: linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h
+===================================================================
+--- linux-2.6.36.orig/arch/mips/include/asm/tc3162/ledcetrl.h	2017-06-22 10:35:19.109655144 +0800
++++ linux-2.6.36/arch/mips/include/asm/tc3162/ledcetrl.h	2017-06-27 16:32:43.514873957 +0800
+@@ -256,9 +256,20 @@
+ 
+ #define LED_VOIP_REG_STATUS	(LED_BASE + 101)
+ #define LED_PHY_VCC_DISABLE		(LED_BASE + 102)
++
+ #if defined(TCSUPPORT_XPON_LED_UPGRADE)
+ #define LED_XPON_UPGRADE (LED_BASE + 103)
+ #endif
++
++#if defined(ZYXEL_CUSTOMIZE_LED_BEHAVIOR) && defined(ZYXEL_UPS_FEATURE)
++#define LED_UPS_BATT				(LED_BASE + 104)
++#define LED_UPS_BATT_BLINK			(LED_BASE + 105)
++#define GPIO_UPS_BATT_FAIL			(LED_BASE + 106) /* active HIGH when battery fail Self Test */
++#define GPIO_UPS_BATT_LOW			(LED_BASE + 107) /* active HIGH when battery <45% capacity */
++#define GPIO_UPS_BATT_ON			(LED_BASE + 108) /* active HIGH when operation from battery */
++#define GPIO_UPS_BATT_MISSING		(LED_BASE + 109) /* active HIGH when battery missing */
++#endif
++
+ #define mtkled_read_reg_word(reg) 			regRead32(reg)
+ #define mtkled_write_reg_word(reg, wdata) 	regWrite32(reg, wdata)
+ /*__________________________________________________________________________
+Index: linux-2.6.36/arch/mips/pci/pci-tc3162u.c
+===================================================================
+--- linux-2.6.36.orig/arch/mips/pci/pci-tc3162u.c	2017-06-22 10:35:19.133655144 +0800
++++ linux-2.6.36/arch/mips/pci/pci-tc3162u.c	2017-06-22 10:35:19.565655135 +0800
+@@ -2835,6 +2835,10 @@
+ 			printk("PCI-E RC0 & RC1 can not link up\n");
+ 			return -1;
+ 		}
++		#if defined(ZYXEL_PCIE_RESET0_PIN_AS_GPIO_30)
++		tmp = regRead32(0xbfa20104);
++		regWrite32(0xbfa20104, (tmp | (1<<20)));
++		#endif
+ 		#if defined(ZYXEL_PCIE_RESET1_PIN_AS_GPIO_31)
+ 		tmp = regRead32(0xbfa20104);
+ 		regWrite32(0xbfa20104, (tmp | (1<<21)));

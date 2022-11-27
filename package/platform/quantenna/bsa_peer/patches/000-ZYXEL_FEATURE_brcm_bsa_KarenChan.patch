@@ -1,0 +1,1492 @@
+Index: bsa-1.0.1/Makefile
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/Makefile	2017-03-28 13:13:25.929076667 +0800
+@@ -0,0 +1,56 @@
++#############################################################
++#
++# band steering agent
++#
++#############################################################
++BSA_VERSION:=1.0.1
++#BSA_BUILD_DIR=$(BUILD_DIR)
++BSA_DIR=$(BSA_BUILD_DIR)/bsa_app
++BSA_PEER_DIR=$(BSA_BUILD_DIR)/bsa_peer
++#BSA_SOURCE=bsa-$(BSA_VERSION).tar.gz
++#BSA_SITE=ftp://ftp.quantenna.com
++#QTN_LICENSE_BRIEF:="Quantenna Proprietary"
++#QTN_LICENSE_FULL_PATH:="COPYRIGHT"
++#QTN_VERSION:=1.0.0
++#QTN_SOURCE_DOWNLOAD:="Binary only provided as part of the SDK"
++#QTN_DESCRIPTION:="Daemon to implement band steering functionality."
++#QTN_MODIFICATIONS:="None - proprietary code."
++#QTN_INTERACTION:="Provides AP side userspace band steering daemon"
++
++export TARGET_DIR
++
++.PHONY: FORCE
++
++#$(DL_DIR)/$(BSA_SOURCE):
++#	$(WGET) -P $(DL_DIR) $(BSA_SITE)/$(BSA_SOURCE)
++
++#$(BSA_BUILD_DIR)/.unpacked: $(DL_DIR)/$(BSA_SOURCE)
++#	$(ZCAT) $(DL_DIR)/$(BSA_SOURCE) | tar -C $(BUILD_DIR) $(TAR_OPTIONS) -
++#	touch $(BSA_BUILD_DIR)/.unpacked
++
++#bsa:
++#	$(MAKE) -C $(BSA_DIR) CC=$(TARGET_CC)
++#
++#bsa_peer: $(BSA_BUILD_DIR)/.unpacked
++#	$(MAKE) -C $(BSA_PEER_DIR) CC=$(TARGET_CC) SHARED=$(TOPDIR)/../drivers/include/shared
++all:
++	$(MAKE) -C $(BSA_PEER_DIR)
++
++
++
++bsa-clean:
++	#-$(MAKE) -C $(BSA_DIR) clean
++	-$(MAKE) -C $(BSA_PEER_DIR) clean
++
++bsa-dirclean: bsa-clean
++	rm -f $(TARGET_DIR)/usr/sbin/bsa
++	rm -f $(TARGET_DIR)/usr/sbin/bsa_peer
++
++#############################################################
++#
++# Toplevel Makefile options
++#
++#############################################################
++#ifeq ($(strip $(BR2_PACKAGE_BSA)),y)
++TARGETS+=bsa_peer
++#endif
+Index: bsa-1.0.1/bsa_peer/Makefile
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/Makefile	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/Makefile	2017-03-28 13:13:25.929076667 +0800
+@@ -1,6 +1,35 @@
++#common
++ifneq ($(CONFIG_BIG_ENDIAN),)
++CFLAGS += -IBIG_ENDIAN
++else
++CFLAGS += -ILITTLE_ENDIAN
++endif
++
++#BRCM
++IMPL=$(strip $(shell readlink $(BCM_BUILD_DIR)/bcmdrivers/broadcom/net/wl/bcm9$(BRCM_CHIP) | sed 's/[^0-9]//g'))
++WL_SRC_BASE=$(shell if [ "$(IMPL)" -ge 22 ]; then echo main/src; else echo .; fi ;)
++WIRELESS_DRIVER_SRC_PATH=$(BCM_BUILD_DIR)/bcmdrivers/broadcom/net/wl/bcm9$(BRCM_CHIP)/$(WL_SRC_BASE)
++
++ALLOWED_INCLUDE_PATHS = -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD)  \
++                         -I$(INC_BRCMDRIVER_PRIV_PATH)/$(BRCM_BOARD) \
++                         -I$(INC_BRCMSHARED_PUB_PATH)/$(BRCM_BOARD) \
++                         -I$(BCM_BUILD_DIR)/shared/broadcom/include/$(BRCM_BOARD) \
++                         -I$(BCM_BUILD_DIR)/shared/opensource/include/$(BRCM_BOARD)
++
++INC_PATH += $(ALLOWED_INCLUDE_PATHS)
++
++CFLAGS += -I$(WIRELESS_DRIVER_SRC_PATH)/common/include
++CFLAGS += -I$(WIRELESS_DRIVER_SRC_PATH)/shared/bcmwifi/include -I$(WIRELESS_DRIVER_SRC_PATH)/include
++CFLAGS += -I$(ZYWIFI_BUILD_DIR)
++CFLAGS += -I$(ZYWIFI_BUILD_DIR)/Broadcom
++
++
++#QTN
+ CFLAGS += -I../include/
++CFLAGS += -I$(STAGING_DIR)/usr/include/libqcsapi_client/
++CFLAGS += -I$(STAGING_DIR)/usr/include/libqcsapi_client/qtn/
+ CFLAGS += -I$(SDK_DIR)/drivers/include/shared -I$(SDK_DIR)/include
+-CFLAGS += -Wall -Werror
++#CFLAGS += -Wall -Werror
+ CFLAGS += -DCONFIG_QTN_BSA_SUPPORT
+ 
+ 
+@@ -8,12 +37,12 @@
+ FASTSTEERSTAOBJS = fast_steer_sta.o
+ 
+ LIBOBJS = $(BSAPEEROBJS) $(FASTSTEERSTAOBJS)
+-all: $(LIBOBJS)
++all: clean $(LIBOBJS)
+ 	$(CC) -o bsa_peer $(CFLAGS) $(BSAPEEROBJS)
+ 	$(CC) -o fast_steer_sta $(CFLAGS) $(FASTSTEERSTAOBJS)
+-	install -D -m 755 bsa_peer $(TARGET_DIR)/usr/sbin/
+-	install -D -m 755 fast_steer_sta $(TARGET_DIR)/usr/sbin/
+-	install -D -m 644 bsa_conf.txt $(TARGET_DIR)/etc/
++	#install -D -m 755 bsa_peer $(TARGET_DIR)/usr/sbin/
++	#install -D -m 755 fast_steer_sta $(TARGET_DIR)/usr/sbin/
++	#install -D -m 644 bsa_conf.txt $(TARGET_DIR)/etc/
+ 
+ clean:
+ 	-rm -rf *.o
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.c
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.c	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.c	2017-03-28 13:13:25.929076667 +0800
+@@ -41,15 +41,18 @@
+ **                                                                           **
+ *******************************************************************************
+ EH0*/
+-
++#include <endian.h>
+ #include "bsa_peer_event.h"
+-#include <netinet/ether.h>
++#include "bcmwifi_channels.h"
++
++
+ 
+ int bsa_debug_level = BSA_INFO;
+ 
+ extern struct bsa_conf_vap_info_s bsa_conf_info[BSA_PEER_MAX_INTF_COUNT];
+ extern const struct bsa_driver_ops bsa_driver_qtn_ops;
+ extern uint16_t vap_count;
++//extern zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, char *macAddr);
+ 
+ static int  get_bsa_conf_info(struct bsa_command * bsa_cmd_buff)
+ {
+@@ -66,8 +69,7 @@
+ 	return retval;
+ }
+ 
+-
+-static int get_bsa_conf_info_by_name(char *name)
++/*static int get_bsa_conf_info_by_name(char *name)
+ {
+ 	int i;
+ 	for (i=0;i<vap_count;i++) {
+@@ -75,9 +77,7 @@
+ 			return i;
+ 	}
+ 	return -1;
+-}
+-
+-
++}*/
+ 
+ static int bsa_peer_recv_cmd_from_bsaapp(void *cmd_ctx, void *buffer, size_t cmd_len)
+ {
+@@ -272,7 +272,7 @@
+ 
+ 	return 0;
+ }
+-
++/*
+ static void bsa_netlink_receive_link(struct bsa_netlink_data *netlink,
+ 				void (*cb)(void *ctx, struct ifinfomsg *ifi,
+ 				uint8_t *buf, size_t len),
+@@ -284,7 +284,7 @@
+ 	cb(netlink->cfg->ctx, NLMSG_DATA(h),
+ 		(uint8_t *) NLMSG_DATA(h) + NLMSG_ALIGN(sizeof(struct ifinfomsg)),
+ 		NLMSG_PAYLOAD(h, sizeof(struct ifinfomsg)));
+-}
++}*/
+ 
+ void bsa_peer_process_app_cmd(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+@@ -335,7 +335,20 @@
+ 
+ void bsa_peer_netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx)
+ {
+-	struct bsa_peer_entity *bsa_peer = eloop_ctx;
++    struct bsa_peer_entity *bsa_peer = eloop_ctx;
++    unsigned int evt_type;
++    char pkt[4096] = {0};
++    int sock_len = sizeof(struct sockaddr_in);
++    int bytes;
++    struct sockaddr_in fromdriv;
++    bcm_event_t *dpkt;
++
++    bytes = recvfrom(sock, pkt, sizeof(pkt), 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
++    dpkt = (bcm_event_t *)pkt;
++    evt_type = ntohl(dpkt->event.event_type);
++
++    zybsa_peer_drv_events_handler(dpkt, evt_type, bsa_peer);
++    /*struct bsa_peer_entity *bsa_peer = eloop_ctx;
+ 	struct bsa_netlink_data *netlink = bsa_peer->netlink;
+ 	char *buf;
+ 	int left;
+@@ -377,6 +390,7 @@
+ 
+ 	free(buf);
+ 	return;
++	*/
+ }
+ 
+ void bsa_peer_netlink_deinit(struct bsa_netlink_data *netlink)
+@@ -400,8 +414,8 @@
+ struct bsa_netlink_data * bsa_peer_netlink_create(struct bsa_netlink_config *cfg)
+ {
+ 	struct bsa_netlink_data *netlink;
+-	struct sockaddr_nl read_local1, read_local2, write_local;
+-
++	struct sockaddr_nl read_local2, write_local;
++    //struct sockaddr_nl read_local1;
+ 	netlink = (struct bsa_netlink_data *)malloc(sizeof(struct bsa_netlink_data));
+ 	if (netlink == NULL) {
+ 		bsa_printf(BSA_DEBUG, "BSA_PEER: allocation for netlink structures failed");
+@@ -410,15 +424,16 @@
+ 
+ 	netlink->cfg = cfg;
+ 
+-	/*init read socket*/
+-	netlink->drv_read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
++	/*init brcm_drv_read_socket*/
++    bsa_drv_read_sock_init(&netlink->drv_read_sock);
++	//netlink->drv_read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+ 	if (netlink->drv_read_sock < 0) {
+ 		bsa_printf(BSA_WARN, "BSA_PEER: Failed to open netlink socket: %s",
+ 				strerror(errno));
+ 		bsa_peer_netlink_deinit(netlink);
+ 		return NULL;
+ 	}
+-
++    /*
+ 	memset(&read_local1, 0, sizeof(read_local1));
+ 	read_local1.nl_family = AF_NETLINK;
+ 	read_local1.nl_groups = RTMGRP_LINK;
+@@ -429,7 +444,7 @@
+ 				strerror(errno));
+ 		bsa_peer_netlink_deinit(netlink);
+ 		return NULL;
+-	}
++	}*/
+ 
+ 	/*init app read socket */
+ 	netlink->read_sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+@@ -887,46 +902,6 @@
+ 	if(strncmp(custom, "BSA-PEER-EVENT",15) == 0) {
+ 		bsa_peer_sub_events_handler(bsa_peer, custom, length);
+ 	} 
+-	#if 0
+-	else {
+-		char store_info[STOR_INFO_LEN];
+-		char *sear_string = NULL, *temp_str = NULL;
+-		uint8_t  event_buff[BSA_MAX_EVENT_LEN];
+-		struct bsa_evt_sta_disconnect_event_data *sta_disconnect_event;
+-		struct bsa_drv_peer_event_data *p_data = (void *)custom;
+-
+-		memset(store_info, 0, STOR_INFO_LEN);
+-		memset(event_buff, 0, BSA_MAX_EVENT_LEN);
+-		sta_disconnect_event = (void *)event_buff;
+-
+-		if ((strstr(custom, "Client disconnected") != NULL) ||
+-			(strstr(custom, "Client authentication failed") != NULL)) {
+-			sear_string = strtok_r(custom, "[", &temp_str);
+-			sscanf(temp_str,"%20[^]]", store_info);
+-			ether_aton_r(store_info, (struct ether_addr *)sta_disconnect_event->sta_mac);
+-			memset(&store_info, 0, sizeof(store_info));
+-			sear_string = strtok_r(NULL, "-", &temp_str);
+-			sscanf(temp_str,"%2[^-]", store_info);
+-			sta_disconnect_event->reason_code = atoi(store_info);
+-			sta_disconnect_event->direction = BSA_DISCONNECT_PEER_GENERATED;
+-
+-			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, p_data->bssid, (void *)event_buff,
+-						sizeof(struct bsa_evt_sta_disconnect_event_data));
+-
+-		} else if ((strstr(custom, "Client removed") != NULL)) {
+-			sear_string = strtok_r(custom, "[", &temp_str);
+-			sscanf(temp_str, "%20[^]]", store_info);
+-			ether_aton_r(store_info, (struct ether_addr *)sta_disconnect_event->sta_mac);
+-			memset(&store_info, 0, sizeof(store_info));
+-			sear_string = strtok_r(NULL, "-", &temp_str);
+-			sscanf(temp_str,"%2[^-]", store_info);
+-			sta_disconnect_event->reason_code = atoi(store_info);
+-			sta_disconnect_event->direction = BSA_DISCONNECT_SELF_GENERATED;
+-			bsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_DISASSOC, p_data->bssid,(void *) event_buff,
+-						sizeof(struct bsa_evt_sta_disconnect_event_data));
+-		}
+-	}
+-#endif
+ }
+ 
+ void bsa_peer_events(struct bsa_peer_entity  *bsa_peer, char *data, int len)
+@@ -974,7 +949,7 @@
+ 		pos += iwe->len;
+ 	}
+ }
+-
++#if 0
+ void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len)
+ {
+ 	struct bsa_peer_entity  *bsa_peer  = ctx;
+@@ -1090,7 +1065,7 @@
+ 			attr = RTA_NEXT(attr, attrlen);
+ 	}
+ }
+-
++#endif
+ int bsa_peer_event_init()
+ {
+ 	struct bsa_netlink_config *cfg;
+@@ -1107,8 +1082,8 @@
+ 	}
+ 
+ 	cfg->ctx = bsa_peer;
+-	cfg->newlink_cb = bsa_peer_event_rtm_newlink;
+-	cfg->dellink_cb = bsa_peer_event_rtm_dellink;
++	//cfg->newlink_cb = bsa_peer_event_rtm_newlink;
++	//cfg->dellink_cb = bsa_peer_event_rtm_dellink;
+ 	bsa_peer->netlink = bsa_peer_netlink_create(cfg);
+ 	bsa_peer->ioctl_sock = socket(PF_INET, SOCK_DGRAM, 0);
+ 
+@@ -1121,6 +1096,7 @@
+ 		return -ENOMEM;
+ 	}
+ 
++
+ 	bsa_peer_wait_for_event(bsa_peer);
+ 	close(bsa_peer->ioctl_sock);
+ 
+@@ -1136,3 +1112,869 @@
+ 	free(bsa_peer);
+ 	bsa_peer->netlink = NULL;
+ }
++
++void bsa_drv_read_sock_init(int* drv_evt_sock){
++    printf("\033[0;32;33m [init brcm event socket] \033[0m \n");
++    /*brcm event socket----below*/
++    struct sockaddr_in fromdriv;
++    int evt_sock, reuse = 1, err=0;
++    /*unsigned int type;
++    char pkt[4096] = {0};
++    int sock_len = sizeof(struct sockaddr_in);
++    int bytes, len=4096;
++    bcm_event_t *dpkt;*/
++
++    memset(&fromdriv, 0, sizeof(fromdriv));
++    /* Prepare connect struct */
++    fromdriv.sin_family = AF_INET;
++    fromdriv.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //htonl(INADDR_LOOPBACK);
++    fromdriv.sin_port = htons(EAPD_WKSP_MEVENT_UDP_SPORT);
++
++    /* Create socket */
++    reuse=1;
++    if (( evt_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
++    	//WPRINT(W_ERROR, "Unable to create socket.\n");
++        printf("\033[0;32m [Unable to create socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++    	err = -1;
++    }
++    else if ( (err = setsockopt(evt_sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse))) < 0) {
++    	//WPRINT(W_ERROR, "Unable to setsockopt to loopback socket %d.\n", evt_sock);
++        printf("\033[0;32m [Unable to setsockopt to loopback socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++    }
++    else if ( (err = bind(evt_sock, (struct sockaddr *)&fromdriv, sizeof(struct sockaddr))) < 0) {
++    	//WPRINT(W_ERROR, "Unable to bind to loopback socket %d.\n", evt_sock);
++        printf("\033[0;32m [Unable to bind to loopback socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++    }
++
++	if ( err < 0) {
++		//WPRINT(W_ERROR, "Failure. Close socket.\n");
++		if(evt_sock >= 0) {close(evt_sock); printf("\033[0;32m [Failure. Close socket.    %s:%d] \033[0m \n", __FUNCTION__, __LINE__);}
++	}
++    if(evt_sock<0)
++        printf("\033[0;32m [Create drv_evt_sock fail. ---> %s:%d] \033[0m \n", __FUNCTION__, __LINE__);
++
++    * drv_evt_sock = evt_sock;
++
++    // TEST: Get Event from driver
++    /*while(1){
++        bytes = recvfrom(evt_sock, pkt, len, 0, (struct sockaddr *)&fromdriv,  (socklen_t *)&sock_len);
++        dpkt = (bcm_event_t *)pkt;
++        type = ntohl(dpkt->event.event_type);
++        printf("\033[0;32;33m [KAREN TEST %s:%d event_type_bytes=%d  event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, bytes, type);
++
++        switch(type){
++    		case WLC_E_ASSOC_IND:
++                printf("\033[0;32m [KAREN TEST    %s:%d   WLC_E_ASSOC_IND=%d] \033[0m \n", __FUNCTION__, __LINE__,WLC_E_ASSOC_IND);
++                break;
++    		case WLC_E_REASSOC_IND:
++            case WLC_E_PROBREQ_MSG_RX:
++                printf("\033[0;32m [KAREN TEST    %s:%d   WLC_E_PROBREQ_MSG_RX] \033[0m \n", __FUNCTION__, __LINE__);
++                break;
++        }
++    }
++    // Close socket
++    close(evt_sock); */
++
++}
++
++void zybsa_peer_drv_events_handler(bcm_event_t *drv_msg, int drv_event, struct bsa_peer_entity *bsa_peer){
++    /* Send brcm eventsfrom bsa_peer to app*/
++    /*struct bsa_drv_peer_event_data *pdata;
++    */
++
++    switch(drv_event){
++
++        case WLC_E_PROBREQ_MSG_RX:
++        {
++            /*char macAddr[18];
++            printf("\033[0;32;33m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
++            zyWifiGetIfHwAddr(ntohs(drv_msg->event.ifname), macAddr);
++            printf("\033[0;32;34m [KAREN TEST %s:%d macAddr=%s] \033[0m \n", __FUNCTION__, __LINE__, macAddr);
++            zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_PROBE_REQ, pdata->bssid, drv_msg);*/
++            break;
++	    }
++
++        case WLC_E_ASSOC_IND:
++        {
++            //char macAddr[18];
++            //uint8 bssid[ETHER_ADDR_LEN];
++            printf("\033[0;32;33m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
++            //zyWifiGetIfHwAddr(ntohs(drv_msg->event.ifname), macAddr, bssid);
++            zybsa_peer_send_event_to_bsaapp(bsa_peer, BSA_EVENT_CONNECT_COMPLETE, drv_msg);
++           // struct bsa_drv_probe_event_info probe_event;
++           // probe_event.sta_mac=*(drv_msg->event.addr.octet);
++
++            break;
++
++        }
++        case WLC_E_DEAUTH:
++        case WLC_E_DISASSOC_IND:
++        {
++		    break;
++        }
++        case WLC_E_REASON_BSSTRANS_REQ:
++        {
++
++		    break;
++        }
++        default:
++        {
++            char macAddr[18]; uint8 bssid[ETHER_ADDR_LEN]; zyWifiGetIfHwAddr((drv_msg->event.ifname), bssid);
++            unsigned char sta_mac[18]; zyWifiGetSTAAddr(sta_mac, drv_msg->event.addr.octet);
++            printf("\033[0;32;33m [KAREN TEST %s:%d *** Event_type= %d ***] \033[0m \n", __FUNCTION__, __LINE__, drv_event);
++            printf("\033[0;32;34m [KAREN TEST %s:%d version=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.version));
++            printf("\033[0;32;34m [KAREN TEST %s:%d flags=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.flags));
++            printf("\033[0;32;34m [KAREN TEST %s:%d event_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.event_type));
++            printf("\033[0;32;34m [KAREN TEST %s:%d status=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.status));
++            printf("\033[0;32;34m [KAREN TEST %s:%d reason=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.reason));
++            printf("\033[0;32;34m [KAREN TEST %s:%d auth_type=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.auth_type));
++            printf("\033[0;32;34m [KAREN TEST %s:%d datalen=%d] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.datalen));
++            printf("\033[0;32;34m [KAREN TEST %s:%d ifname=%s] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifname));
++            printf("\033[0;32;34m [KAREN TEST %s:%d ifidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.ifidx));
++            printf("\033[0;32;34m [KAREN TEST %s:%d bsscfgidx=%x] \033[0m \n", __FUNCTION__, __LINE__, (drv_msg->event.bsscfgidx));
++            printf("\033[0;32;34m [KAREN TEST %s:%d sta_mac=%s] \033[0m \n", __FUNCTION__, __LINE__,sta_mac);
++            printf("\033[0;32;34m [KAREN TEST %s:%d macAddr=%s] \033[0m \n", __FUNCTION__, __LINE__, macAddr);
++            break;
++        }
++    }
++}
++
++zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid){
++	int fd;
++    struct ifreq ifr;
++    unsigned char *mac = NULL;
++	zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
++
++    memset(&ifr, 0, sizeof(ifr));
++    fd = socket(AF_INET, SOCK_DGRAM, 0);
++    ifr.ifr_addr.sa_family = AF_INET;
++    strncpy(ifr.ifr_name , ifname , IFNAMSIZ-1);
++
++    if (0 == ioctl(fd, SIOCGIFHWADDR, &ifr)) {
++        mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
++		ret = ZCFG_SUCCESS;
++    }
++    memcpy(bssid,mac,ETH_ALEN);
++    close(fd);
++    return ret;
++}
++
++zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr){
++    zcfgRet_t ret = ZCFG_INTERNAL_ERROR;
++    if(ether_addr!=NULL){
++        sprintf(sta_mac, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ether_addr[0], ether_addr[1], ether_addr[2], ether_addr[3], ether_addr[4], ether_addr[5]);
++        ret = ZCFG_SUCCESS;
++    }
++    return ret;
++}
++
++#define ID_CURSPEC_SEP '('
++zcfgRet_t zyWlanGetCurrentChannelInfo(bcm_event_t *drv_msg, struct ChSpec *chspec)
++{
++	char cmd[100] = {0};
++	FILE *fp = NULL;
++	char *cp;
++	int chanspec = 0, channel = 0, sb = 0, sideband = CTLSB_NONE;
++	int bandwith = 0;
++	static char *filePath = "/tmp/.cur_channel";
++
++	if(drv_msg == NULL || drv_msg->event.ifname == NULL ||
++		strncmp(drv_msg->event.ifname, "wl", 2))
++	{
++		return ZCFG_INVALID_ARGUMENTS;
++	}
++	// AP chanspec
++	sprintf(cmd, "wlctl -i %s chanspec > %s", drv_msg->event.ifname, filePath);
++	system(cmd);
++	fp = fopen(filePath, "r");
++
++	if(fp != NULL) {
++		while( fgets( cmd, sizeof(cmd), fp ) ) {
++			cp = strchr(cmd, ID_CURSPEC_SEP);
++			if(cp) {
++				chanspec = strtol(cp+1, 0, 16);
++				break;
++			}
++		}
++		fclose(fp);
++		unlink(filePath);
++
++		if(chanspec){
++			if((chanspec & WL_CHANSPEC_BW_MASK) == WL_CHANSPEC_BW_40) {
++				bandwith = 40;
++				sb = chanspec & WL_CHANSPEC_CTL_SB_MASK;
++				if(sb == WL_CHANSPEC_CTL_SB_LOWER){
++					channel = (chanspec & WL_CHANSPEC_CHAN_MASK) - 2;
++					sideband = CTLSB_LOWER;
++				}
++				else{
++					channel = (chanspec & WL_CHANSPEC_CHAN_MASK) + 2;
++					sideband = CTLSB_UPPER;
++				}
++			}
++			else {
++				bandwith = 20;
++				channel = chanspec & WL_CHANSPEC_CHAN_MASK;
++				sideband = CTLSB_NONE;
++			}
++			chspec->chanspec = chanspec;
++			chspec->channel = channel;
++			chspec->bw = bandwith;
++			if(CHSPEC_IS2G(chanspec)) chspec->band = 2;
++			else chspec->band = 5;
++			chspec->sb = sideband;
++
++			return ZCFG_SUCCESS;
++		}
++	}
++	else {
++		printf("%s: error open file\n",__FUNCTION__);
++	}
++	return ZCFG_INTERNAL_ERROR;
++}
++
++int zycheckWlBand(const char *ifname){
++	char buf[64] = {0}, *_ifname = NULL, *tmp;
++	int l, band = -1;
++	FILE *fp = NULL;
++
++	if(ifname == NULL) return -1;
++
++	_ifname = strdup(ifname);
++	if(_ifname == NULL) return -1;
++	if((tmp = strchr(_ifname, '.'))) *tmp = '\0';
++
++	sprintf(buf, "wlctl -i %s band", _ifname);
++	if((fp = popen(buf, "r"))){
++		l = fread (buf,1,sizeof(buf)-1,fp);
++		if(l > 0){
++			buf[l] = '\0';
++			if(!strcmp(buf, "b")) band = BAND_B;
++			else if(!strcmp(buf, "1")) band = BAND_A;
++		}
++
++		pclose(fp);
++	}
++
++	free(_ifname);
++
++	return band;
++}
++
++int zygetMaxRateSet(char *rate_set){
++	char *tmp, *tmp2, *strEnd;
++	int rate = -1, i;
++	float val = 0;
++
++	if(rate_set == NULL) return -1;
++
++	strEnd = rate_set+strlen(rate_set);
++
++	tmp = rate_set;
++	while(tmp < strEnd){
++		if(*tmp >= '0' && *tmp <= '9'){
++			i = (int)strtof(tmp, &tmp2);
++			if(i > rate) rate = i;
++			tmp = tmp2;
++		}
++		tmp++;
++	}
++
++	return rate;
++}
++
++int zygetAntennaNum(char *mcs){
++    int AntennaNum=0, index=0, i;
++    char *tmp, *tmp2, *strEnd;
++
++    if(mcs == NULL) return -1;
++    strEnd= mcs+strlen(mcs);
++    tmp=mcs;
++    while(tmp < strEnd){
++        if(*tmp>='0' && *tmp<='9'){
++            i=(int)strtof(tmp,&tmp2);
++            index=(i>index)?i:index;
++        }
++        tmp++;
++    }
++    switch(index) {
++    case 7:
++        AntennaNum=1;
++        break;
++    case 15:
++        AntennaNum=2;
++        break;
++    case 23:
++        AntennaNum=3;
++        break;
++    default:
++        AntennaNum=0;
++        break;
++    }
++    return AntennaNum;
++}
++
++void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta)
++{
++    static char *filePath2 = "/tmp/.sta_rssi";
++    char buf[256];
++    char macAddr[18]={0};
++    int len = sizeof(buf)-1;
++    FILE *fp = NULL;
++
++    sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++
++    do{
++        sprintf(buf, "wlctl -i %s rssi %s > %s", ifname, macAddr, filePath2);
++        system(buf);
++    	if((fp = fopen(filePath2, "r"))){
++    		if(fgets(buf, len, fp) != NULL){
++    			//if(buf[0] == '-') sta->rssi = atoi(buf);
++    			sta->rssi = atoi(buf);
++    		}
++    		fclose(fp);
++    		//unlink(filePath2);
++    		if(sta->rssi==0)
++                sleep(1);
++    	}
++    }while(sta->rssi==0);
++
++}
++
++int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type)
++{
++	FILE *fp = NULL;
++	char buf[256], *tmp, *tmp2, *str, *tmp3;
++	int len = sizeof(buf)-1;
++	unsigned int flags = 0, ht_flags = 0, vht_flags = 0;
++	char rate_set[256];
++    char mcs_set[256];
++	static char *filePath = "/tmp/.sta_results";
++	char macAddr[18]={0};
++    char bandwidth[10]={0};
++	if(ifname == NULL || mac == NULL || sta == NULL) return -1;
++
++	//memset(sta, 0, sizeof(brcm_wl_sta_st_s));
++	memset(rate_set, 0, sizeof(rate_set));
++    memset(mcs_set, 0, sizeof(mcs_set));
++    sprintf(macAddr,""MACSTR"",MAC2STR(mac));
++    printf("ifname=%s mac=%s \n", ifname, macAddr);
++
++	strncpy(sta->ifName, ifname, sizeof(sta->ifName)-1);
++
++	sprintf(buf, "wlctl -i %s sta_info %s > %s", ifname, macAddr, filePath);
++	system(buf);
++	if((fp = fopen(filePath, "r"))){
++		while(fgets(buf, len, fp) != NULL){
++			if((tmp = strchr(buf, ':')) != NULL){
++				*tmp = '\0';
++				tmp2 = tmp+1;
++			}
++			else tmp2 = NULL;
++
++			tmp = buf;
++
++			if(tmp2){ // check has value
++				if((str = strstr(tmp,"rate of last tx pkt"))){
++					if((tmp3 = strstr(tmp2,"kbps"))) *tmp3 = '\0';
++					if((tmp3 = strchr(tmp2,'-'))) *tmp3 = '\0';
++					sta->lastTxRate = strtoul(tmp2, NULL, 0);
++				}
++				else if((str = strstr(tmp,"rate of last rx pkt"))){
++					if((tmp3 = strstr(tmp2,"kbps"))) *tmp3 = '\0';
++					if((tmp3 = strchr(tmp2,'-'))) *tmp3 = '\0';
++					sta->lastRxRate = strtoul(tmp2, NULL, 0);
++				}
++				else if((str = strstr(tmp,"flags"))){
++					tmp3 = str+5;
++					flags = strtoul(tmp3, NULL, 0);
++				}
++
++				else if((str = strstr(tmp,"HT caps"))){
++					tmp3 = str+7;
++					ht_flags = strtoul(tmp3, NULL, 0);
++                    if(str = strstr(tmp2,"SGI20")){
++                        sprintf(bandwidth, "SGI20");
++				    }
++                    if(str = strstr(tmp2,"SGI40")){
++                        sprintf(bandwidth, "SGI40");
++				    }
++				}
++				else if((str = strstr(tmp,"VHT caps"))){
++					tmp3 = str+8;
++					vht_flags = strtoul(tmp3, NULL, 0);
++				}
++				else if((str = strstr(tmp,"rateset"))){
++					tmp3 = str+8;
++					strncpy(rate_set, tmp3, sizeof(rate_set)-1);
++				}
++                else if((str = strstr(tmp,"MCS SET"))){
++					tmp3 = str+10;
++					strncpy(mcs_set, tmp3, sizeof(mcs_set)-1);
++				}
++				else if(type == 'd'){
++					if((str = strstr(tmp,"tx total pkts"))){
++						sta->txPackets = strtoul(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"tx total bytes"))){
++						sta->txBytes = strtoull(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"rx data pkts"))){
++						sta->rxPackets = strtoul(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"rx data bytes"))){
++						sta->rxBytes = strtoull(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"tx failures"))){
++						sta->txErrors = strtoul(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"tx pkts retries"))){
++						sta->txRetrans = strtoul(tmp2, NULL, 0);
++					}
++					else if((str = strstr(tmp,"tx pkts retry exhausted"))){
++						sta->txRetransFail = strtoul(tmp2, NULL, 0);
++					}
++				}
++			}
++		}
++		if(flags){
++			if(flags & WL_STA_AUTHE) sta->authState = 1;
++			else sta->authState = 0;
++			if(flags & WL_STA_ASSOC){
++				if(flags & WL_STA_VHT_CAP){
++					sta->standard = IEEE80211_WLPROTO_11AC;
++					if(vht_flags & WL_STA_SGI160) // if no SGI ??
++						sta->bandwidth = 160;
++					else
++						sta->bandwidth = 80;
++				}
++				else if(ht_flags != 0){
++					sta->standard = IEEE80211_WLPROTO_11N;
++					//if(ht_flags & WL_STA_CAP_40MHZ)
++						sta->bandwidth = (!strcmp(bandwidth,"SGI40"))?40:20;
++				}
++				else{
++                    sta->bandwidth = 20 ;
++                    // BAND_A is 5G
++					if(zycheckWlBand(ifname) == BAND_A){
++						sta->standard = IEEE80211_WLPROTO_11A;
++					}
++					else{
++						if(zygetMaxRateSet(rate_set) > 11)
++							sta->standard = IEEE80211_WLPROTO_11G;
++						else
++							sta->standard = IEEE80211_WLPROTO_11B;
++					}
++				}
++			}
++		}
++
++        sta->rx_ss_info=zygetAntennaNum(mcs_set);
++
++        if(sta->bandwidth==20)
++            sta->max_phy_rate=Max_Phy_Rate20(sta->rx_ss_info);
++        else if(sta->bandwidth==40)
++            sta->max_phy_rate=Max_Phy_Rate40(sta->rx_ss_info);
++
++		fclose(fp);
++		//unlink(filePath);
++	}
++
++	//printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta->standard, sta->authState, sta->rssi, sta->bandwidth, sta->rx_ss_info, sta->max_phy_rate);
++	return 0;
++}
++
++
++
++int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id,	bcm_event_t *drv_msg)
++{
++    struct bsa_netlink_data *netlink = bsa_peer->netlink;
++	//uint8_t *drv_event =  (void *)(msg_data);
++	struct bsa_drv_probe_event_info *probe_event;
++	struct bsa_drv_connect_compl_event_info *connect_event;
++	struct bsa_drv_intf_status *intf_status_event;
++	struct bsa_drv_intf_info *intf_info1 = NULL;
++	struct bsa_drv_gen_intf_info *intf_info = NULL;
++	struct bsa_drv_intf_fat_info *intf_fat_info = NULL;
++	struct bsa_evt_sta_probereq_info *preq_info = NULL;
++	struct bsa_evt_sta_connect_info *connect_info = NULL;
++	struct bsa_evt_sta_disconnect_info *sta_disconnect_info = NULL;
++	struct bsa_evt_intf_status *intf_status = NULL;
++	struct ieee80211_bsa_sta_stats *bsa_dri_sta_stats = NULL;
++	struct ieee80211_bsa_sta_info *bsa_dri_sta_info = NULL;
++	struct ieee80211_nac_stats_report *bsa_dri_neighbour_report = NULL;
++	struct ieee80211_bsa_btm_resp_event *drv_btm_resp_evt;
++	struct nac_info_entry *bsa_dri_neighbour = NULL;
++	struct bsa_evt_sta_disconnect_event_data *sta_disconnect_event;
++	struct bsa_evt_bss_trans_status *bss_trans_status;
++	struct bsa_reltime time;
++	struct nlmsghdr *nlh = NULL;
++	struct iovec iov;
++	struct sockaddr_nl dest_addr;
++	int msg_len;
++	struct msghdr msg;
++	uint8_t *tx_buff = NULL, *pos;
++	struct bsa_event_info *event_buffer;
++    struct ChSpec chanspec;
++    struct zy_sta_info_t sta_info;
++	uint32_t cnt = 0;
++
++    tx_buff = malloc(BSA_MAX_EVENT_LEN);
++	if (!tx_buff)
++		return -ENOMEM;
++	event_buffer = (void *)tx_buff;
++
++    if (!netlink || (netlink->write_sock == 0)){
++        printf("\033[0;32m [KAREN TEST    %s:%d Create netlink->write_sock faile] \033[0m \n", __FUNCTION__, __LINE__);
++		return -EINVAL;
++    }
++    switch (event_id) {
++        case BSA_EVENT_PROBE_REQ:
++    		/*probe_event = (void *)(drv_event);
++    		msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
++    		event_buffer->event_id = BSA_EVENT_PROBE_REQ;
++    		event_buffer->api_ver = BSA_PEER_API_VERSION;
++    		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++    		bsa_printf(BSA_DEBUG, "BSA_PEER: probe bssid="MACSTR"", MAC2STR(bssid));
++    		event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
++    		preq_info = (void *)&event_buffer->payload;
++    		memcpy(preq_info->sta_mac, probe_event->sta_mac, ETH_ALEN);
++    		preq_info->rssi = probe_event->rssi - BSA_RSSI_CORRECTION;
++    		preq_info->rx_ss_info = probe_event->rss;
++    		preq_info->max_phy_rate = probe_event->max_phy_rate;
++    		bsa_get_reltime(&time);
++    		preq_info->tstamp = time.sec;
++    		preq_info->curr_band = probe_event->curr_band;
++    		preq_info->channel = probe_event->channel;
++    		preq_info->sta_capab = probe_event->band_width;
++    		preq_info->sta_capab |= ((probe_event->vht_capab & 0x1)?0x10:0);
++    		preq_info->sta_capab |= ((probe_event->vht_capab & 0x2)?0x80:0);
++    		preq_info->sta_capab |= ((probe_event->bss_transition?0x8:0));
++    		preq_info->sta_capab |= (probe_event->mu_mimo_capab << 5); */
++		break;
++        case BSA_EVENT_CONNECT_COMPLETE:
++            printf("\033[0;32m [KAREN TEST %s:%d   **BSA_EVENT_CONNECT_COMPLETE**  ] \033[0m \n", __FUNCTION__, __LINE__);
++    		//connect_event = (void *)(drv_event);
++    		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
++    		event_buffer->event_id = host_to_le16(BSA_EVENT_CONNECT_COMPLETE);
++    		event_buffer->api_ver = BSA_PEER_API_VERSION;
++            zyWifiGetIfHwAddr(drv_msg->event.ifname, event_buffer->bssid);
++    		//memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++    		event_buffer->payload_len = host_to_le16(sizeof(struct bsa_evt_sta_connect_info));
++    		connect_info = (void *)&event_buffer->payload;
++    		memcpy(connect_info->sta_mac,drv_msg->event.addr.octet, ETH_ALEN);
++    		connect_info->curr_band = host_to_le16(BSA_OPER_BAND_2G);
++            zyWlanGetCurrentChannelInfo(drv_msg, &chanspec);
++    		connect_info->channel = chanspec.channel;
++
++            zyget_sta_info(drv_msg->event.ifname, connect_info->sta_mac, &sta_info, 'b');
++            zyget_sta_rssi(drv_msg->event.ifname, connect_info->sta_mac, &sta_info);
++            printf("standard=%d, authState=%u, rssi=%d, bandwidth=%d, rx_ss_info=%d, max_phy_rate=%d \n", sta_info.standard, sta_info.authState, sta_info.rssi, sta_info.bandwidth, sta_info.rx_ss_info, sta_info.max_phy_rate);
++
++            connect_info->rx_ss_info = host_to_le16(sta_info.rx_ss_info);
++    		connect_info->max_phy_rate = host_to_le16(sta_info.max_phy_rate);
++            //Bit0-3: supported bandwidth Bit3: IEEE802.11v support
++            //Bit4: 11ac support Bit5-6: MUMIMO support Bit7: reserved
++            connect_info->sta_capab=0;
++            if(sta_info.bandwidth==40)
++                connect_info->sta_capab |= BIT(0);
++            if(sta_info.standard==IEEE80211_WLPROTO_11AC)
++                connect_info->sta_capab |= BIT(4);
++		    connect_info->sta_capab |= BIT(6);
++
++            printf("bssid="MACSTR", sta_mac="MACSTR", channel=%d, curr_band=%d, sta_capab=%d\n", MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac), connect_info->channel, connect_info->curr_band, connect_info->sta_capab);
++
++    		/*bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
++    				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
++    				connect_info->channel, connect_info->curr_band);*/
++    		break;
++        default:
++    		bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
++    		free(tx_buff);
++    		return -1;
++
++	}
++
++    nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
++	memset(nlh, 0, NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
++	nlh->nlmsg_len = NLMSG_LENGTH(msg_len);
++	nlh->nlmsg_pid = getpid();
++	nlh->nlmsg_type = BSA_PEER_EVENT;
++	nlh->nlmsg_flags = 0;
++
++	memcpy(NLMSG_DATA(nlh), tx_buff, msg_len);
++
++	memset(&dest_addr, 0, sizeof(dest_addr));
++	dest_addr.nl_family = AF_NETLINK;
++	dest_addr.nl_pid = 0;
++	dest_addr.nl_groups = RTMGRP_NOTIFY;
++
++	iov.iov_base = (void *)nlh;
++	iov.iov_len = nlh->nlmsg_len;
++
++	memset(&msg, 0, sizeof(msg));
++	msg.msg_name = (void *)&dest_addr;
++	msg.msg_namelen = sizeof(dest_addr);
++	msg.msg_iov = &iov;
++	msg.msg_iovlen = 1;
++
++	if (sendmsg(netlink->write_sock, &msg, 0) < 0) {
++        printf("\033[0;32m [KAREN TEST    %s:%d Sendmsg faile] \033[0m \n", __FUNCTION__, __LINE__);
++		bsa_printf(BSA_WARN, "BSA_PEER: sendmsg failed reason=%s\n", strerror(errno));
++		free(tx_buff);
++		free(nlh);
++		return -1;
++	}
++
++	free(tx_buff);
++	free(nlh);
++
++	return 0;
++}
++#if 0
++
++
++	if (!netlink || (netlink->write_sock == 0))
++		return -EINVAL;
++
++	tx_buff = malloc(BSA_MAX_EVENT_LEN);
++	if (!tx_buff)
++		return -ENOMEM;
++
++	event_buffer = (void *)tx_buff;
++
++	switch (event_id) {
++	case BSA_EVENT_PROBE_REQ:
++		/*probe_event = (void *)(drv_event);
++		msg_len = EVENT_FIXED_LEN + EVENT_PROBE_FIXED;
++		event_buffer->event_id = BSA_EVENT_PROBE_REQ;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		bsa_printf(BSA_DEBUG, "BSA_PEER: probe bssid="MACSTR"", MAC2STR(bssid));
++		event_buffer->payload_len = sizeof(struct bsa_evt_sta_probereq_info);
++		preq_info = (void *)&event_buffer->payload;
++		memcpy(preq_info->sta_mac, probe_event->sta_mac, ETH_ALEN);
++		preq_info->rssi = probe_event->rssi - BSA_RSSI_CORRECTION;
++		preq_info->rx_ss_info = probe_event->rss;
++		preq_info->max_phy_rate = probe_event->max_phy_rate;
++		bsa_get_reltime(&time);
++		preq_info->tstamp = time.sec;
++		preq_info->curr_band = probe_event->curr_band;
++		preq_info->channel = probe_event->channel;
++		preq_info->sta_capab = probe_event->band_width;
++		preq_info->sta_capab |= ((probe_event->vht_capab & 0x1)?0x10:0);
++		preq_info->sta_capab |= ((probe_event->vht_capab & 0x2)?0x80:0);
++		preq_info->sta_capab |= ((probe_event->bss_transition?0x8:0));
++		preq_info->sta_capab |= (probe_event->mu_mimo_capab << 5);
++		break;*/
++	case BSA_EVENT_CONNECT_COMPLETE:
++		connect_event = (void *)(drv_event);
++		msg_len = EVENT_FIXED_LEN + EVENT_CONNECT_FIXED;
++		event_buffer->event_id = BSA_EVENT_CONNECT_COMPLETE;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++
++		event_buffer->payload_len = sizeof(struct bsa_evt_sta_connect_info);
++		connect_info = (void *)&event_buffer->payload;
++		memcpy(connect_info->sta_mac, connect_event->sta_mac, ETH_ALEN);
++		connect_info->rx_ss_info = connect_event->rss;
++		connect_info->max_phy_rate = connect_event->max_phy_rate;
++		connect_info->curr_band = connect_event->curr_band;
++		connect_info->channel = connect_event->channel;
++		connect_info->sta_capab = connect_event->band_width;
++
++		connect_info->sta_capab |= ((connect_event->vht_capab & 0x1)?0x10:0);
++		connect_info->sta_capab |= ((connect_event->vht_capab & 0x2)?0x80:0);
++		connect_info->sta_capab |= ((connect_event->bss_transition_support?0x8:0));
++		connect_info->sta_capab |= (connect_event->mu_mimo_capab << 5);
++		bsa_printf(BSA_DEBUG, "BSA_PEER: Connect info event: bssid="MACSTR", mac="MACSTR" channel %d, band %d",
++				MAC2STR(event_buffer->bssid), MAC2STR(connect_info->sta_mac),
++				connect_info->channel, connect_info->curr_band);
++		break;
++#if 0
++	case BSA_EVENT_INTF_STATUS:
++		intf_status_event = (void *)(drv_event);
++		msg_len = INTERFACE_STATUS_INFO_LEN;
++		event_buffer->event_id = BSA_EVENT_INTF_STATUS;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		event_buffer->payload_len = sizeof(struct bsa_evt_intf_status);
++
++		intf_status = (void *)&event_buffer->payload;
++		intf_status->ifname_size = intf_status_event->ifname_size;
++		strncpy((char *)intf_status->ifname, (char *)intf_status_event->ifname, IFNAMSIZ);
++		intf_status->status = intf_status_event->status;
++		bsa_printf(BSA_DEBUG, "BSA_PEER: Interface status event: bssid"MACSTR", status=%d",
++				MAC2STR(event_buffer->bssid), intf_status->status);
++		break;
++	case BSA_EVENT_INTF_INFO:
++		intf_info1 = (void *)(drv_event);
++		msg_len = sizeof(struct bsa_event_info);
++		event_buffer->event_id = BSA_EVENT_INTF_INFO;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(&event_buffer->bssid, bssid, ETH_ALEN);
++		pos = event_buffer->payload;
++		switch (intf_info1->cmd_spec) {
++		case BSA_INTF_INFO_GEN_CMD:
++		{
++			uint8_t value[8];
++			intf_info = &intf_info1->u.bsa_drv_gen_intf_info_var;
++
++			memcpy(value, intf_info->bssid, ETH_ALEN);
++			*(uint16_t *)&value[ETH_ALEN] = intf_info->mdid;
++			pos += bsa_encap_tlv(pos, TLVTYPE_BSSID_MDID, value, 8);
++
++			if (intf_info->ifname) {
++				int tlv_len = (strlen((char *)intf_info->ifname) + 4) & (~0x3); /* aligned to 4 bytes including string ending */
++				uint16_t *ptr = (uint16_t *)pos;
++				*(ptr++) = TLVTYPE_IFNAME;
++				*(ptr++) = tlv_len;
++				strcpy((char *)ptr, (char *)intf_info->ifname);
++				pos += sizeof(struct bsa_tlv)+tlv_len;
++			}
++
++			value[0] = intf_info->channel;
++			value[1] = intf_info->band;
++			value[2] = intf_info->opclass;
++			pos += bsa_encap_tlv(pos, TLVTYPE_CHANNEL_BAND, value, 3);
++			value[0] = intf_info->drivercap;
++			value[1] = intf_info->phytype;
++			value[2] = intf_info->capinfo & 0xff;
++			value[3] = intf_info->capinfo >> 8;
++			pos += bsa_encap_tlv(pos, TLVTYPE_INTERFACE_CAPABILITY, value, 4);
++			pos += bsa_encap_tlv(pos, TLVTYPE_HT_CAPABILITY, &intf_info->htcap, sizeof(struct ieee80211_ie_htcap));
++			pos += bsa_encap_tlv(pos, TLVTYPE_HT_OPERATION, &intf_info->htop, sizeof(struct ieee80211_ie_htinfo));
++			if (intf_info->phytype==9) { /* vht */
++				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_CAPABILITY, &intf_info->vhtcap, sizeof(struct ieee80211_ie_vhtcap));
++				pos += bsa_encap_tlv(pos, TLVTYPE_VHT_OPERATION, &intf_info->vhtop, sizeof(struct ieee80211_ie_vhtop));
++
++			}
++			pos += bsa_encap_tlv(pos, TLVTYPE_BEACON_INTERVAL, &intf_info->beacon_interval, 2);
++		}
++		break;
++		case BSA_INTF_INFO_FAT_CMD:
++		{
++			uint8_t value[4];
++			intf_fat_info = &intf_info1->u.bsa_drv_intf_fat_info_var;
++			value[0] = intf_fat_info->channel;
++			value[1] = intf_fat_info->band;
++			*(uint16_t *)&value[2] = intf_fat_info->avg_fat;
++			pos += bsa_encap_tlv(pos, TLVTYPE_AVERAGE_FAT, value, 4);
++		}
++		break;
++		}
++		event_buffer->payload_len = pos - event_buffer->payload;
++		msg_len += event_buffer->payload_len;
++		break;
++	case BSA_EVENT_DISASSOC:
++		sta_disconnect_event = (void *)(drv_event);
++		msg_len = STA_DISCONNECT_INFO_LEN;
++		event_buffer->event_id = BSA_EVENT_DISASSOC;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		event_buffer->payload_len = sizeof(struct bsa_evt_sta_disconnect_info);
++		sta_disconnect_info = (void*)&event_buffer->payload;
++		memcpy(sta_disconnect_info->sta_mac, sta_disconnect_event->sta_mac, ETH_ALEN);
++		sta_disconnect_info->direction = sta_disconnect_event->direction;
++		sta_disconnect_info->reason_code = sta_disconnect_event->reason_code;
++		bsa_printf(BSA_DEBUG, "BSA_PEER: Disconnect event: bssid="MACSTR", station "MACSTR" direction %d, reason=%d",
++				MAC2STR(event_buffer->bssid), MAC2STR(sta_disconnect_info->sta_mac),
++				sta_disconnect_info->direction, sta_disconnect_info->reason_code);
++		break;
++	case BSA_EVENT_STA_PHY_STATS:
++		bsa_dri_sta_stats = (void *)(drv_event);
++		msg_len = sizeof (struct bsa_event_info);
++		event_buffer->event_id = BSA_EVENT_STA_PHY_STATS;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		bsa_dri_sta_info = bsa_dri_sta_stats->ieee80211_bsa_sta_info_var;
++		pos = event_buffer->payload;
++
++		while (cnt < bsa_dri_sta_stats->num_sta) {
++			pos += bsa_encap_tlv(pos, TLVTYPE_STA_MAC, bsa_dri_sta_info->sta_mac, ETH_ALEN);
++			pos += bsa_encap_tlv(pos, TLVTYPE_RX_PHYRATE, &bsa_dri_sta_info->rx_phy_rate, 4);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_RX, &bsa_dri_sta_info->ts_last_rx_pkt, 8);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TX_PHYRATE, &bsa_dri_sta_info->tx_phy_rate, 4);
++			pos += bsa_encap_tlv(pos, TLVTYPE_TS_LAST_TX, &bsa_dri_sta_info->ts_last_tx_pkt, 8);
++			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &bsa_dri_sta_info->rssi_dbm, 4);
++			bsa_dri_sta_info++;
++			cnt++;
++		}
++		event_buffer->payload_len = pos - event_buffer->payload;
++		msg_len += event_buffer->payload_len;
++		break;
++	case BSA_EVENT_STA_NONASSOC_STATS:
++		bsa_dri_neighbour_report = (void *)(drv_event);
++		msg_len = sizeof (struct bsa_event_info);
++		cnt = 0;
++		event_buffer->event_id = BSA_EVENT_STA_NONASSOC_STATS;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		bsa_dri_neighbour = bsa_dri_neighbour_report->nac_stats;
++		pos = event_buffer->payload;
++
++		while (cnt < bsa_dri_neighbour_report->nac_entries) {
++			uint32_t rssi_dbm = bsa_dri_neighbour->nac_avg_rssi;
++			pos += bsa_encap_tlv(pos, TLVTYPE_STA_MAC, bsa_dri_neighbour->nac_txmac, ETH_ALEN);
++			pos += bsa_encap_tlv(pos, TLVTYPE_RSSI, &rssi_dbm, 4);
++			bsa_dri_neighbour++;
++			cnt++;
++		}
++		event_buffer->payload_len = pos - event_buffer->payload;
++		msg_len += event_buffer->payload_len;
++		break;
++	case BSA_EVENT_BSS_TRANS_STATUS:
++		drv_btm_resp_evt = (void *)(drv_event);
++		msg_len = sizeof(struct bsa_event_info)+sizeof(struct bsa_evt_bss_trans_status);
++		event_buffer->event_id = BSA_EVENT_BSS_TRANS_STATUS;
++		event_buffer->api_ver = BSA_PEER_API_VERSION;
++		memcpy(event_buffer->bssid, bssid, ETH_ALEN);
++		event_buffer->payload_len = sizeof(struct bsa_evt_bss_trans_status);
++		bss_trans_status = (void*)&event_buffer->payload;
++		memcpy( bss_trans_status->sta_mac, drv_btm_resp_evt->bsa_sta_mac, ETH_ALEN);
++		bss_trans_status->status_code = drv_btm_resp_evt->bsa_btm_resp_status;
++		break;
++#endif
++	default:
++		bsa_printf(BSA_DEBUG, "BSA_PEER: unknown BSA peer event\n", __func__);
++		free(tx_buff);
++		return -1;
++
++	}
++
++	nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
++	memset(nlh, 0, NLMSG_SPACE(NLMSG_LENGTH(msg_len)));
++	nlh->nlmsg_len = NLMSG_LENGTH(msg_len);
++	nlh->nlmsg_pid = getpid();
++	nlh->nlmsg_type = BSA_PEER_EVENT;
++	nlh->nlmsg_flags = 0;
++
++	memcpy(NLMSG_DATA(nlh), tx_buff, msg_len);
++
++	memset(&dest_addr, 0, sizeof(dest_addr));
++	dest_addr.nl_family = AF_NETLINK;
++	dest_addr.nl_pid = 0;
++	dest_addr.nl_groups = RTMGRP_NOTIFY;
++
++	iov.iov_base = (void *)nlh;
++	iov.iov_len = nlh->nlmsg_len;
++
++	memset(&msg, 0, sizeof(msg));
++	msg.msg_name = (void *)&dest_addr;
++	msg.msg_namelen = sizeof(dest_addr);
++	msg.msg_iov = &iov;
++	msg.msg_iovlen = 1;
++
++	if (sendmsg(netlink->write_sock, &msg, 0) < 0) {
++		bsa_printf(BSA_WARN, "BSA_PEER: sendmsg failed reason=%s\n", strerror(errno));
++		free(tx_buff);
++		free(nlh);
++		return -1;
++	}
++
++	free(tx_buff);
++	free(nlh);
++
++	return 0;
++}
++#endif
+Index: bsa-1.0.1/bsa_peer/bsa_peer_event.h
+===================================================================
+--- bsa-1.0.1.orig/bsa_peer/bsa_peer_event.h	2017-03-03 15:59:33.000000000 +0800
++++ bsa-1.0.1/bsa_peer/bsa_peer_event.h	2017-03-28 13:13:25.929076667 +0800
+@@ -16,6 +16,49 @@
+ #include "bsa_driver_qtn.h"
+ #include "bsa_peer_entity.h"
+ #include "bsa_wireless_copy.h"
++/* BRCM SOCKET */
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include "proto/ethernet.h"
++#include <proto/bcmevent.h>
++#include "libzywlan.h"
++#include "zylib.h"
++
++#if defined(BIG_ENDIAN)
++#define le_to_host16(n) bswap_16(n)
++#define host_to_le16(n) bswap_16(n)
++#define be_to_host16(n) (n)
++#define host_to_be16(n) (n)
++#define le_to_host32(n) bswap_32(n)
++#define host_to_le32(n) bswap_32(n)
++#define be_to_host32(n) (n)
++#define host_to_be32(n) (n)
++#define le_to_host64(n) bswap_64(n)
++#define host_to_le64(n) bswap_64(n)
++#define be_to_host64(n) (n)
++#define host_to_be64(n) (n)
++#elif defined(LITTLE_ENDIAN)
++#define le_to_host16(n) ((__u16) (__le16) (n))
++#define host_to_le16(n) ((__le16) (__u16) (n))
++#define be_to_host16(n) bswap_16((__u16) (be16) (n))
++#define host_to_be16(n) ((__be16) bswap_16((n)))
++#define le_to_host32(n) ((__u32) (__le32) (n))
++#define host_to_le32(n) ((__le32) (__u32) (n))
++#define be_to_host32(n) bswap_32((__u32) (__be32) (n))
++#define host_to_be32(n) ((__be32) bswap_32((n)))
++#define le_to_host64(n) ((__u64) (__le64) (n))
++#define host_to_le64(n) ((__le64) (__u64) (n))
++#define be_to_host64(n) bswap_64((__u64) (__be64) (n))
++#define host_to_be64(n) ((__be64) bswap_64((n)))
++#else
++#error Could not determine CPU byte order
++#endif
++
++
+ 
+ #define BSA_RSSI_CORRECTION	90
+ #define BSA_PEER_MAX_MSG_LEN	2048
+@@ -35,13 +78,31 @@
+ #define BSA_MAX_EVENT_LEN 4096
+ #define STOR_INFO_LEN	19
+ 
+-void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
+-void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
++#define EAPD_WKSP_SPORT_OFFSET		(1 << 5)
++#define EAPD_WKSP_MEVENT_UDP_PORT       44000
++#define EAPD_WKSP_MEVENT_UDP_SPORT      EAPD_WKSP_MEVENT_UDP_PORT + EAPD_WKSP_SPORT_OFFSET
++#define ETHER_ADDR_LEN 6
++
++//void bsa_peer_event_rtm_newlink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
++//void bsa_peer_event_rtm_dellink(void *ctx, struct ifinfomsg *ifi, uint8_t *buf, size_t len);
+ void bsa_peer_events(struct bsa_peer_entity  *bsa_peer, char *data, int len);
+ int bsa_peer_event_init();
+ void bsa_peer_deinit(void *priv);
+ void netlink_receive(int sock, struct bsa_peer_entity *eloop_ctx, void *sock_ctx);
+ int bsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id, uint8_t *bssid,
+ 					uint8_t *msg_data, int length);
++void bsa_drv_read_sock_init(int* drv_evt_sock);
++void zybsa_peer_drv_events_handler(bcm_event_t * msg, int drv_event, struct bsa_peer_entity *bsa_peer);
++zcfgRet_t zyWifiGetIfHwAddr(const char *ifname, uint8 *bssid);
++zcfgRet_t zyWifiGetSTAAddr(unsigned char *sta_mac, uint8 *ether_addr);
++zcfgRet_t zyWlanGetCurrentChannelInfo(bcm_event_t *drv_msg, struct ChSpec *chspec);
++int zybsa_peer_send_event_to_bsaapp(struct bsa_peer_entity *bsa_peer, int event_id, 	bcm_event_t *drv_msg);
++int zygetMaxRateSet(char *rate_set);
++int zycheckWlBand(const char *ifname);
++int zygetAntennaNum(char *mcs);
++void zyget_sta_rssi(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta);
++int zyget_sta_info(const char *ifname, const unsigned char *mac, zy_sta_info_s *sta, char type);
++
++
+ 
+ #endif
+Index: bsa-1.0.1/bsa_peer/zylib.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/zylib.c	2017-03-28 13:13:25.929076667 +0800
+@@ -0,0 +1,61 @@
++#include "zylib.h"
++/* BRCM SOCKET */
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include "proto/ethernet.h"
++#include <proto/bcmevent.h>
++
++#include <stdio.h>
++#include <string.h>
++#include <unistd.h>
++#include <sys/ioctl.h>
++#include <net/if.h>
++#include "zylib.h"
++
++
++/*int zyWifiPrint(W_LEVEL_t lv, const char *module, const char *funcN, unsigned int funcL, const char *fmt, ...){
++	char *lvStr = NULL, *tmp;
++	va_list argList;
++	char buf[2048];
++	char name[32];
++	int len = 0, maxlen = 2047;
++
++	if(lv & wifi_log_level){
++		va_start(argList, fmt);
++
++		switch(lv){
++			case W_NOTICE:	lvStr = "NOTICE"; 	break;
++			case W_ERROR:	lvStr = "ERROR"; 	break;
++			case W_INFO:	lvStr = "INFO"; 	break;
++			case W_WARRING:	lvStr = "WARRING"; 	break;
++			case W_ALERT:	lvStr = "ALERT"; 	break;
++			case W_DEBUG:	lvStr = "DEBUG"; 	break;
++			default:		lvStr = ""; 		break;
++		}
++		if(main_tid == pthread_self())
++			len += snprintf(buf, maxlen, "zywifid> [%s]", lvStr);
++		else{
++			name[0] = '\0';
++			prctl(PR_GET_NAME, name, 0, 0, 0);
++			if((tmp = strchr(name, '-'))) *tmp = '\0';
++			len += snprintf(buf, maxlen, "zywifid:%s> [%s]", name, lvStr);
++		}
++		if((maxlen-=len) > 0 && module) len += snprintf(buf+len, maxlen, "[%s]", module);
++		if((maxlen-=len) > 0 && funcN) len += snprintf(buf+len, maxlen, " %s:%u", funcN, funcL);
++		if((maxlen-=len) > 0) len += snprintf(buf+len, maxlen, ": ");
++		maxlen-=len;
++
++		pthread_mutex_lock(&printf_mutex);
++		printf("%s", buf);
++		vprintf(fmt, argList);
++		pthread_mutex_unlock(&printf_mutex);
++
++		va_end(argList);
++	}
++
++	return 0;
++}*/
+Index: bsa-1.0.1/bsa_peer/zylib.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ bsa-1.0.1/bsa_peer/zylib.h	2017-03-28 13:15:02.732359180 +0800
+@@ -0,0 +1,126 @@
++//#include "wllist.h"
++//#include "wllist.c"
++#include "libzywlan.h"
++//#include "brcm.c"
++
++
++extern W_PRINT_FN brcm_print_fn;
++extern int zyWifiPrint(W_LEVEL_t, const char*, const char*, unsigned int, const char*, ...);
++#define WPRINT(l, fmt, arg...) if(brcm_print_fn)brcm_print_fn(l, "BRCM", __FUNCTION__, __LINE__, fmt, ##arg)
++
++#define Max_Phy_Rate20(x) (x*72.2)
++#define Max_Phy_Rate40(x) (x*150)
++
++/* Station capability */
++#define IEEE80211_WLPROTO_11B	0x0001
++#define IEEE80211_WLPROTO_11G	0x0002
++#define IEEE80211_WLPROTO_11A	0x0004
++#define IEEE80211_WLPROTO_11N	0x0008
++#define IEEE80211_WLPROTO_11AC	0x0010
++/* Flags for sta_info_t indicating properties of STA */
++#define WL_STA_BRCM		0x00000001	/* Running a Broadcom driver */
++#define WL_STA_WME		0x00000002	/* WMM association */
++#define WL_STA_NONERP		0x00000004	/* No ERP */
++#define WL_STA_AUTHE		0x00000008	/* Authenticated */
++#define WL_STA_ASSOC		0x00000010	/* Associated */
++#define WL_STA_AUTHO		0x00000020	/* Authorized */
++#define WL_STA_WDS		0x00000040	/* Wireless Distribution System */
++#define WL_STA_WDS_LINKUP	0x00000080	/* WDS traffic/probes flowing properly */
++#define WL_STA_PS		0x00000100	/* STA is in power save mode from AP's viewpoint */
++#define WL_STA_APSD_BE		0x00000200	/* APSD delv/trigger for AC_BE is default enabled */
++#define WL_STA_APSD_BK		0x00000400	/* APSD delv/trigger for AC_BK is default enabled */
++#define WL_STA_APSD_VI		0x00000800	/* APSD delv/trigger for AC_VI is default enabled */
++#define WL_STA_APSD_VO		0x00001000	/* APSD delv/trigger for AC_VO is default enabled */
++#define WL_STA_N_CAP		0x00002000	/* STA 802.11n capable */
++#define WL_STA_SCBSTATS		0x00004000	/* Per STA debug stats */
++#define WL_STA_AMPDU_CAP	0x00008000	/* STA AMPDU capable */
++#define WL_STA_AMSDU_CAP	0x00010000	/* STA AMSDU capable */
++#define WL_STA_MIMO_PS		0x00020000	/* mimo ps mode is enabled */
++#define WL_STA_MIMO_RTS		0x00040000	/* send rts in mimo ps mode */
++#define WL_STA_RIFS_CAP		0x00080000	/* rifs enabled */
++#define WL_STA_VHT_CAP		0x00100000	/* STA VHT(11ac) capable */
++#define WL_STA_WPS		0x00200000	/* WPS state */
++#define WL_STA_DWDS_CAP		0x01000000	/* DWDS CAP */
++#define WL_STA_DWDS		0x02000000	/* DWDS active */
++#define WL_WDS_LINKUP		WL_STA_WDS_LINKUP	/* deprecated */
++
++/* STA HT cap fields */
++#define WL_STA_CAP_LDPC_CODING		0x0001	/* Support for rx of LDPC coded pkts */
++#define WL_STA_CAP_40MHZ		0x0002  /* FALSE:20Mhz, TRUE:20/40MHZ supported */
++#define WL_STA_CAP_MIMO_PS_MASK		0x000C  /* Mimo PS mask */
++#define WL_STA_CAP_MIMO_PS_SHIFT	0x0002	/* Mimo PS shift */
++#define WL_STA_CAP_MIMO_PS_OFF		0x0003	/* Mimo PS, no restriction */
++#define WL_STA_CAP_MIMO_PS_RTS		0x0001	/* Mimo PS, send RTS/CTS around MIMO frames */
++#define WL_STA_CAP_MIMO_PS_ON		0x0000	/* Mimo PS, MIMO disallowed */
++#define WL_STA_CAP_GF			0x0010	/* Greenfield preamble support */
++#define WL_STA_CAP_SHORT_GI_20		0x0020	/* 20MHZ short guard interval support */
++#define WL_STA_CAP_SHORT_GI_40		0x0040	/* 40Mhz short guard interval support */
++#define WL_STA_CAP_TX_STBC		0x0080	/* Tx STBC support */
++#define WL_STA_CAP_RX_STBC_MASK		0x0300	/* Rx STBC mask */
++#define WL_STA_CAP_RX_STBC_SHIFT	8	/* Rx STBC shift */
++#define WL_STA_CAP_DELAYED_BA		0x0400	/* delayed BA support */
++#define WL_STA_CAP_MAX_AMSDU		0x0800	/* Max AMSDU size in bytes , 0=3839, 1=7935 */
++#define WL_STA_CAP_DSSS_CCK		0x1000	/* DSSS/CCK supported by the BSS */
++#define WL_STA_CAP_PSMP			0x2000	/* Power Save Multi Poll support */
++#define WL_STA_CAP_40MHZ_INTOLERANT	0x4000	/* 40MHz Intolerant */
++#define WL_STA_CAP_LSIG_TXOP		0x8000	/* L-SIG TXOP protection support */
++
++#define WL_STA_CAP_RX_STBC_NO		0x0	/* no rx STBC support */
++#define WL_STA_CAP_RX_STBC_ONE_STREAM	0x1	/* rx STBC support of 1 spatial stream */
++#define WL_STA_CAP_RX_STBC_TWO_STREAM	0x2	/* rx STBC support of 1-2 spatial streams */
++#define WL_STA_CAP_RX_STBC_THREE_STREAM	0x3	/* rx STBC support of 1-3 spatial streams */
++
++/* scb vht flags */
++#define WL_STA_VHT_LDPCCAP	0x0001
++#define WL_STA_SGI80		0x0002
++#define WL_STA_SGI160		0x0004
++#define WL_STA_VHT_TX_STBCCAP	0x0008
++#define WL_STA_VHT_RX_STBCCAP	0x0010
++#define WL_STA_SU_BEAMFORMER	0x0020
++#define WL_STA_SU_BEAMFORMEE	0x0040
++#define WL_STA_MU_BEAMFORMER	0x0080
++#define WL_STA_MU_BEAMFORMEE	0x0100
++#define WL_STA_VHT_TXOP_PS	0x0200
++#define WL_STA_HTC_VHT_CAP	0x0400
++
++typedef struct zy_sta_info_t{
++	char ifName[16];
++	char macaddr[18];
++	int standard;
++	unsigned int bandwidth;
++	unsigned short authState;
++	unsigned int lastTxRate;
++	unsigned int lastRxRate;
++	int rssi;
++	int snr;
++	int noise;
++	unsigned int retransmit;
++	unsigned int txPackets;
++	unsigned long long txBytes;
++	unsigned int rxPackets;
++	unsigned long long rxBytes;
++	unsigned int txErrors;
++	unsigned int txRetrans;
++	unsigned int txRetransFail;
++	unsigned int retryCount;
++	unsigned int multipleRetryCount;
++    int rx_ss_info;
++    int max_phy_rate;
++    uint8_t channel;
++}zy_sta_info_s;
++
++
++
++/*typedef enum {
++	W_NOTICE = (1 << 1),
++	W_ERROR = (1 << 2),
++	W_INFO = (1 << 3),
++	W_WARRING = (1 << 4),
++	W_ALERT = (1 << 5),
++	W_DEBUG = (1 << 6),
++	W_NONE = 0
++} W_LEVEL_t;
++
++
++int zyWifiPrint(W_LEVEL_t lv, const char *module, const char *funcN, unsigned int funcL, const char *fmt, ...);
++*/

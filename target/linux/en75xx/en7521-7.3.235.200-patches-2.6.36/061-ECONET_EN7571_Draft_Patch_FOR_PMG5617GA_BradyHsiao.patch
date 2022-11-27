@@ -1,0 +1,40 @@
+Index: linux-2.6.36/include/ecnt_hook/ecnt_hook_pon_phy.h
+===================================================================
+--- linux-2.6.36.orig/include/ecnt_hook/ecnt_hook_pon_phy.h	2018-03-27 15:10:44.346669732 +0800
++++ linux-2.6.36/include/ecnt_hook/ecnt_hook_pon_phy.h	2018-03-27 17:52:09.720560602 +0800
+@@ -80,6 +80,7 @@
+ #endif
+ #define PON_SET_PHY_RESTORE_PREAMBLE_AND_GUARD_BIT      0x0019               /* resotre_preamble_and_guard_bit */
+ #define PON_SET_PHY_NOTIFY_EVENT                        0x001a              
++#define PON_SET_PHY_TRAFFIC_STATUS                      0x001b 			     /* phy_set_traffic_status()*/
+ 
+ 
+ /* Get Function */
+@@ -115,6 +116,7 @@
+ #ifdef TCSUPPORT_CPU_EN7521
+ #define PON_GET_PHY_ROUND_TRIP_DELAY                    0x801e 
+ #endif
++#define PON_GET_PHY_EN7571_VER                    	0x801f
+ 
+ #define PHY_LOS_HAPPEN                          (0x01)
+ #define PHY_NO_LOS_HAPPEN                       (0x00)
+@@ -202,6 +204,11 @@
+ #endif
+ } ENUM_GponPreb_T ;
+ 
++/* traffic status */
++typedef enum {
++    TRAFFIC_STATUS_DOWN     = 0x0,
++    TRAFFIC_STATUS_UP       = 0x1,
++} ENUM_PhyTrafficStatus;
+ 
+ enum ECNT_XPON_PHY_SUBTYPE {
+     ECNT_XPON_PHY_API,
+@@ -290,6 +297,7 @@
+         PHY_TransConfig_T   * tx_trans_cfg    ;
+         PHY_GponPreb_T      * gpon_preamble   ;
+         PHY_GponPreb_T      * gpon_ex_preamble;
++        ENUM_PhyTrafficStatus      * traffic_status  ;
+         void                * raw             ;
+     };
+ }xpon_phy_api_data_t;

@@ -1,0 +1,16 @@
+Index: qsteer-v0.10.3/csm/rpecat/rpecat.c
+===================================================================
+--- qsteer-v0.10.3.orig/csm/rpecat/rpecat.c	2017-03-03 15:58:00.000000000 +0800
++++ qsteer-v0.10.3/csm/rpecat/rpecat.c	2017-04-17 16:32:22.106732866 +0800
+@@ -956,7 +956,11 @@
+ 				if (dest)
+ 					enqueue_rpe_msg(dest, msg, rpemsg_type, rpemsg_len);
+ 				else
++#if 1 //Zyxel
++					RPECAT_DEBUG("Cannot find RPE link for BSSID %"MACFMT"\n", MACARG(rpemsg->bssid));
++#else
+ 					RPECAT_WARN("Cannot find RPE link for BSSID %"MACFMT"\n", MACARG(rpemsg->bssid));
++#endif
+ 			}
+ 		} else if (FLAG_IS_SET(link->flag, LINK_FLAG_RPE)) {
+ 			map_rpe(rpemsg->bssid, link);

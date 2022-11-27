@@ -1,0 +1,13 @@
+Index: linux-2.6.36/include/linux/netlink.h
+===================================================================
+--- linux-2.6.36.orig/include/linux/netlink.h	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/include/linux/netlink.h	2017-04-27 16:26:12.222335320 +0800
+@@ -25,6 +25,8 @@
+ #define NETLINK_SCSITRANSPORT	18	/* SCSI Transports */
+ #define NETLINK_ECRYPTFS	19
+ 
++#define NETLINK_MONITOR 25 /*send events to userspace monitor task*/
++
+ #define MAX_LINKS 32		
+ 
+ struct sockaddr_nl {

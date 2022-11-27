@@ -1,0 +1,13 @@
+Index: ppp-2.4.3/pppd/plugins/rp-pppoe/plugin.c
+===================================================================
+--- ppp-2.4.3.orig/pppd/plugins/rp-pppoe/plugin.c	2018-05-15 09:24:15.985429253 +0800
++++ ppp-2.4.3/pppd/plugins/rp-pppoe/plugin.c	2018-05-15 10:26:02.435414281 +0800
+@@ -222,7 +222,7 @@
+ #ifdef XPON_SUPPORT
+ 			// Work around. Because the WAN interface has not been create, the PADT cannot be sent.
+ 			// So wait for the WAN interface by 6 seconds.
+-			sleep(10);
++			sleep(13);
+ #else
+ 			//THIS IS A WORKAROUND, sometime send PADT fail, wait 2 second seems can resolve the problem.
+ 			sleep(2);

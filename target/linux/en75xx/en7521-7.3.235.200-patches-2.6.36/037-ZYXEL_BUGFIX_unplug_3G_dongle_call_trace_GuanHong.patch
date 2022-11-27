@@ -1,0 +1,227 @@
+Index: linux-2.6.36/drivers/usb/serial/ftdi_sio.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/ftdi_sio.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/usb/serial/ftdi_sio.c	2017-04-27 16:57:14.828819238 +0800
+@@ -1715,25 +1715,44 @@
+ static void ftdi_dtr_rts(struct usb_serial_port *port, int on)
+ {
+ 	struct ftdi_private *priv = usb_get_serial_port_data(port);
+-
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_lock(&port->serial->disc_mutex);
+ 	if (!port->serial->disconnected) {
+ 		/* Disable flow control */
+ 		if (!on && usb_control_msg(port->serial->dev,
++#else
++	/* Disable flow control */
++	if (!on) {
++		if (usb_control_msg(port->serial->dev,
++#endif
+ 			    usb_sndctrlpipe(port->serial->dev, 0),
+ 			    FTDI_SIO_SET_FLOW_CTRL_REQUEST,
+ 			    FTDI_SIO_SET_FLOW_CTRL_REQUEST_TYPE,
+ 			    0, priv->interface, NULL, 0,
+ 			    WDR_TIMEOUT) < 0) {
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 			    dev_err(&port->dev, "error from flowcontrol urb\n");
++#else
++			dev_err(&port->dev, "error from flowcontrol urb\n");
++#endif
+ 		}
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 		/* drop RTS and DTR */
+ 		if (on)
+ 			set_mctrl(port, TIOCM_DTR | TIOCM_RTS);
+ 		else
+ 			clear_mctrl(port, TIOCM_DTR | TIOCM_RTS);
++#endif
+ 	}
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_unlock(&port->serial->disc_mutex);
++#else
++	/* drop RTS and DTR */
++	if (on)
++		set_mctrl(port, TIOCM_DTR | TIOCM_RTS);
++	else
++		clear_mctrl(port, TIOCM_DTR | TIOCM_RTS);
++#endif
+ }
+ 
+ /*
+Index: linux-2.6.36/drivers/usb/serial/mct_u232.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/mct_u232.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/usb/serial/mct_u232.c	2017-04-27 16:57:14.832819238 +0800
+@@ -529,7 +529,7 @@
+ {
+ 	unsigned int control_state;
+ 	struct mct_u232_private *priv = usb_get_serial_port_data(port);
+-
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_lock(&port->serial->disc_mutex);
+ 	if (!port->serial->disconnected) {
+ 		/* drop DTR and RTS */
+@@ -543,6 +543,18 @@
+ 		mct_u232_set_modem_ctrl(port->serial, control_state);
+ 	}
+ 	mutex_unlock(&port->serial->disc_mutex);
++#else
++	spin_lock_irq(&priv->lock);
++	if (on)
++		priv->control_state |= TIOCM_DTR | TIOCM_RTS;
++	else
++		priv->control_state &= ~(TIOCM_DTR | TIOCM_RTS);
++	control_state = priv->control_state;
++	spin_unlock_irq(&priv->lock);
++
++	mct_u232_set_modem_ctrl(port, control_state);
++#endif
++
+ }
+ 
+ static void mct_u232_close(struct usb_serial_port *port)
+Index: linux-2.6.36/drivers/usb/serial/sierra.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/sierra.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/usb/serial/sierra.c	2017-04-27 16:57:14.836819238 +0800
+@@ -881,19 +881,25 @@
+ 
+ static void sierra_dtr_rts(struct usb_serial_port *port, int on)
+ {
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	struct usb_serial *serial = port->serial;
++#endif
+ 	struct sierra_port_private *portdata;
+ 
+ 	portdata = usb_get_serial_port_data(port);
+ 	portdata->rts_state = on;
+ 	portdata->dtr_state = on;
+-
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	if (serial->dev) {
+ 		mutex_lock(&serial->disc_mutex);
+ 		if (!serial->disconnected)
+ 			sierra_send_setup(port);
+ 		mutex_unlock(&serial->disc_mutex);
+ 	}
++#else
++	sierra_send_setup(port);
++#endif
++
+ }
+ 
+ static int sierra_startup(struct usb_serial *serial)
+Index: linux-2.6.36/drivers/usb/serial/ssu100.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/ssu100.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/usb/serial/ssu100.c	2017-04-27 16:57:14.836819238 +0800
+@@ -563,20 +563,36 @@
+ 	struct usb_device *dev = port->serial->dev;
+ 
+ 	dbg("%s\n", __func__);
+-
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_lock(&port->serial->disc_mutex);
+ 	if (!port->serial->disconnected) {
+ 		/* Disable flow control */
+ 		if (!on &&
+ 		    ssu100_setregister(dev, 0, UART_MCR, 0) < 0)
++#else
++		/* Disable flow control */
++		if (!on &&
++		    ssu100_setregister(dev, 0, UART_MCR, 0) < 0)
++#endif
+ 			dev_err(&port->dev, "error from flowcontrol urb\n");
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 		/* drop RTS and DTR */
+ 		if (on)
+ 			set_mctrl(dev, TIOCM_DTR | TIOCM_RTS);
+ 		else
+ 			clear_mctrl(dev, TIOCM_DTR | TIOCM_RTS);
++#endif
+ 	}
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_unlock(&port->serial->disc_mutex);
++#else
++	/* drop RTS and DTR */
++	if (on)
++		set_mctrl(dev, TIOCM_DTR | TIOCM_RTS);
++	else
++		clear_mctrl(dev, TIOCM_DTR | TIOCM_RTS);
++#endif
++
+ }
+ 
+ static void ssu100_update_msr(struct usb_serial_port *port, u8 msr)
+Index: linux-2.6.36/drivers/usb/serial/usb-serial.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/usb-serial.c	2010-10-21 04:30:22.000000000 +0800
++++ linux-2.6.36/drivers/usb/serial/usb-serial.c	2017-04-27 16:57:14.836819238 +0800
+@@ -683,9 +683,31 @@
+ static void serial_dtr_rts(struct tty_port *port, int on)
+ {
+ 	struct usb_serial_port *p = container_of(port, struct usb_serial_port, port);
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0' */
+ 	struct usb_serial_driver *drv = p->serial->type;
++#else
++	struct usb_serial *serial = p->serial;
++	struct usb_serial_driver *drv = serial->type;
++#endif
++
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	if (drv->dtr_rts)
++#else
++	if (!drv->dtr_rts)
++		return;
++	/*
++	* Work-around bug in the tty-layer which can result in dtr_rts
++	* being called after a disconnect (and tty_unregister_device
++	* has returned). Remove once bug has been squashed.
++	*/
++	mutex_lock(&serial->disc_mutex);
++	if (!serial->disconnected)
++#endif
+ 		drv->dtr_rts(p, on);
++#if 1 /* Zyxel fix 3G dongle unplug call trace with "if 1" */
++	mutex_unlock(&serial->disc_mutex);
++#endif
++
+ }
+ 
+ static const struct tty_port_operations serial_port_ops = {
+Index: linux-2.6.36/drivers/usb/serial/usb_wwan.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/serial/usb_wwan.c	2017-04-26 03:22:56.787158458 +0800
++++ linux-2.6.36/drivers/usb/serial/usb_wwan.c	2017-04-27 16:57:14.844819238 +0800
+@@ -43,7 +43,9 @@
+ 
+ void usb_wwan_dtr_rts(struct usb_serial_port *port, int on)
+ {
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	struct usb_serial *serial = port->serial;
++#endif
+ 	struct usb_wwan_port_private *portdata;
+ 
+ 	struct usb_wwan_intf_private *intfdata;
+@@ -56,12 +58,21 @@
+ 		return;
+ 
+ 	portdata = usb_get_serial_port_data(port);
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	mutex_lock(&serial->disc_mutex);
++#else
++	/* FIXME: locking */
++#endif
+ 	portdata->rts_state = on;
+ 	portdata->dtr_state = on;
++#if 0 /* Zyxel fix 3G dongle unplug call trace with "if 0" */
+ 	if (serial->dev)
+ 		intfdata->send_setup(port);
+ 	mutex_unlock(&serial->disc_mutex);
++#else
++	intfdata->send_setup(port);
++#endif
++
+ }
+ EXPORT_SYMBOL(usb_wwan_dtr_rts);
+ 
